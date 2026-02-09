@@ -35,11 +35,9 @@ class ReyVoiceClient {
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
     
-    // Connect first - disable audio for testing
+    // Connect first, then start audio
     this.connect();
-    // TODO: Re-enable after WebSocket confirmed working
-    // setTimeout(() => this.setupAudio(), 500);
-    console.log('Audio disabled for testing');
+    setTimeout(() => this.setupAudio(), 500);
   }
 
   createVisualizerBars() {
@@ -68,28 +66,31 @@ class ReyVoiceClient {
 
       // Create audio context
       this.audioContext = new AudioContext({ sampleRate: 16000 });
+      
+      // Load AudioWorklet processor
+      await this.audioContext.audioWorklet.addModule('audio-processor.js');
+      
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       
-      // Create script processor for raw audio access
-      this.processor = this.audioContext.createScriptProcessor(512, 1, 1);
+      // Create AudioWorklet node (modern replacement for ScriptProcessorNode)
+      this.processor = new AudioWorkletNode(this.audioContext, 'audio-capture-processor');
       
-      this.processor.onaudioprocess = (e) => {
+      // Handle audio data from worklet
+      this.processor.port.onmessage = (event) => {
         try {
-          const inputData = e.inputBuffer.getChannelData(0);
-          
-          // Update visualizer regardless of connection
-          this.updateVisualizer(inputData);
-          
-          // Only send if connected
-          if (this.socket?.readyState === WebSocket.OPEN) {
-            // Convert float32 to int16
-            const int16Data = new Int16Array(inputData.length);
-            for (let i = 0; i < inputData.length; i++) {
-              int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+          if (event.data.type === 'audio') {
+            // Update visualizer
+            const float32 = new Float32Array(event.data.data.byteLength / 2);
+            const int16 = new Int16Array(event.data.data);
+            for (let i = 0; i < int16.length; i++) {
+              float32[i] = int16[i] / 32768;
             }
+            this.updateVisualizer(float32);
             
-            // Send to server
-            this.socket.send(int16Data.buffer);
+            // Send to server if connected
+            if (this.socket?.readyState === WebSocket.OPEN) {
+              this.socket.send(event.data.data);
+            }
           }
         } catch (err) {
           console.error('Audio processing error:', err);
@@ -97,16 +98,9 @@ class ReyVoiceClient {
       };
 
       source.connect(this.processor);
-      // Don't connect to destination - we only need to capture, not play back the mic
-      // this.processor.connect(this.audioContext.destination);
+      // No need to connect to destination for capture-only
       
-      // Connect to a dummy node to keep the processor running
-      const dummyGain = this.audioContext.createGain();
-      dummyGain.gain.value = 0;
-      this.processor.connect(dummyGain);
-      dummyGain.connect(this.audioContext.destination);
-      
-      console.log('Audio setup complete');
+      console.log('Audio setup complete (AudioWorklet)');
     } catch (err) {
       console.error('Audio setup failed:', err);
       this.showError('Microphone access denied. Please enable microphone permissions.');
