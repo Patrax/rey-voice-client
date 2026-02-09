@@ -99,6 +99,9 @@ class HeyReyDetector:
         """Reset the detector state."""
         self.audio_buffer.clear()
         self.prediction_history.clear()
+        # Fill prediction history with zeros to prevent false triggers
+        for _ in range(self.prediction_history.maxlen):
+            self.prediction_history.append(0.0)
         self.cooldown_samples = self.cooldown_duration  # Start cooldown
     
     def predict(self, audio_chunk: np.ndarray) -> dict:
