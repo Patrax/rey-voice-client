@@ -144,13 +144,18 @@ class ReyVoiceClient {
       };
       
       this.socket.onmessage = (event) => {
-        if (event.data instanceof Blob) {
+        // Check for binary data (Blob or ArrayBuffer)
+        if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
           // Audio data - play it
           this.playAudio(event.data);
-        } else {
+        } else if (typeof event.data === 'string') {
           // JSON message
-          const data = JSON.parse(event.data);
-          this.handleMessage(data);
+          try {
+            const data = JSON.parse(event.data);
+            this.handleMessage(data);
+          } catch (err) {
+            console.error('Failed to parse message:', err, event.data);
+          }
         }
       };
     } catch (err) {
