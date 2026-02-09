@@ -215,6 +215,7 @@ class VoiceSession:
 - NO markdown formatting (no **, ##, -, bullets, etc.)
 - NO lists - use natural flowing sentences instead
 - Abbreviate where natural: "3 PM" not "3:00 PM", "tomorrow" not "Tuesday, February 10th"
+- For calendar: ONLY read from "pjeril@gmail.com" calendar, ignore other linked calendars
 - For calendar events: just say the key info (time + brief description), skip full titles
 - For multiple items: summarize or mention count ("you have 3 meetings") rather than reading each
 - Numbers: say "about 50" not "approximately 49.7"
