@@ -200,23 +200,33 @@ class VoiceSession:
         return await request_task
 
     async def synthesize_speech(self, text: str) -> bytes:
-        """Convert text to speech audio."""
-        if self.tts_voice:
-            # Use local Piper TTS
-            audio_buffer = io.BytesIO()
-            with wave.open(audio_buffer, 'wb') as wav:
-                wav.setnchannels(1)
-                wav.setsampwidth(2)
-                wav.setframerate(22050)
-                self.tts_voice.synthesize(text, wav)
-            return audio_buffer.getvalue()
-        else:
-            # Use OpenClaw's TTS endpoint
+        """Convert text to speech audio using OpenAI TTS."""
+        openai_key = config.OPENAI_API_KEY
+        if not openai_key:
+            logger.warning("No OpenAI API key for TTS, response will be text-only")
+            return b""
+        
+        try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                # This would need to be implemented based on OpenClaw's TTS API
-                # For now, fall back to a simple beep or use ElevenLabs directly
-                logger.warning("Local TTS not available, response will be text-only")
-                return b""
+                response = await client.post(
+                    "https://api.openai.com/v1/audio/speech",
+                    headers={
+                        "Authorization": f"Bearer {openai_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "tts-1",
+                        "input": text[:4096],  # Max 4096 chars
+                        "voice": "nova",  # Options: alloy, echo, fable, onyx, nova, shimmer
+                        "response_format": "mp3",
+                    }
+                )
+                response.raise_for_status()
+                logger.info(f"TTS generated {len(response.content)} bytes")
+                return response.content
+        except Exception as e:
+            logger.error(f"TTS failed: {e}")
+            return b""
 
     async def handle_audio(self, audio_data: bytes):
         """Process incoming audio chunk from client."""

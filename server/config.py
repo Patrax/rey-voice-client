@@ -23,6 +23,7 @@ WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base.en")  # tiny.en, base.en, small
 
 # TTS settings  
 TTS_MODEL = os.getenv("TTS_MODEL", "en_US-lessac-medium")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # Server
 HOST = os.getenv("HOST", "0.0.0.0")

@@ -246,22 +246,28 @@ class ReyVoiceClient {
     }
   }
 
-  async playAudio(blob) {
+  async playAudio(data) {
     try {
-      const arrayBuffer = await blob.arrayBuffer();
-      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+      // Handle both Blob and ArrayBuffer
+      const blob = data instanceof Blob ? data : new Blob([data], { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(blob);
       
-      const source = this.audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(this.audioContext.destination);
-      source.start();
+      // Use Audio element for reliable MP3 playback
+      const audio = new Audio(url);
       
-      source.onended = () => {
-        // Audio finished playing
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
         if (this.state === 'speaking') {
           this.setState('waiting');
         }
       };
+      
+      audio.onerror = (err) => {
+        console.error('Audio playback error:', err);
+        URL.revokeObjectURL(url);
+      };
+      
+      await audio.play();
     } catch (err) {
       console.error('Audio playback error:', err);
     }
