@@ -45,6 +45,7 @@ class ReyVoiceClient {
   }
 
   createVisualizerBars() {
+    if (!this.visualizer) return;
     const numBars = 30;
     this.visualizer.innerHTML = '';
     for (let i = 0; i < numBars; i++) {
