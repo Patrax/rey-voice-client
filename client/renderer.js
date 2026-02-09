@@ -35,9 +35,9 @@ class ReyVoiceClient {
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
     
-    // Start audio and connect
-    await this.setupAudio();
+    // Connect first, then start audio after small delay
     this.connect();
+    setTimeout(() => this.setupAudio(), 500);
   }
 
   createVisualizerBars() {
@@ -95,7 +95,14 @@ class ReyVoiceClient {
       };
 
       source.connect(this.processor);
-      this.processor.connect(this.audioContext.destination);
+      // Don't connect to destination - we only need to capture, not play back the mic
+      // this.processor.connect(this.audioContext.destination);
+      
+      // Connect to a dummy node to keep the processor running
+      const dummyGain = this.audioContext.createGain();
+      dummyGain.gain.value = 0;
+      this.processor.connect(dummyGain);
+      dummyGain.connect(this.audioContext.destination);
       
       console.log('Audio setup complete');
     } catch (err) {
