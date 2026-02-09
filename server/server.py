@@ -65,6 +65,7 @@ class VoiceSession:
         self.oww_model = None
         self.whisper_model = None
         self.tts_voice = None
+        self.wake_word_cooldown = False
 
     async def initialize(self):
         """Initialize models (lazy load)."""
@@ -223,7 +224,7 @@ class VoiceSession:
         audio_chunk = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
         if self.state == State.WAITING_FOR_WAKE_WORD:
-            if self.process_wake_word(audio_chunk):
+            if not self.wake_word_cooldown and self.process_wake_word(audio_chunk):
                 # Reset wake word model to clear internal buffers
                 self.oww_model.reset()
                 await self.send_state(State.LISTENING, "I'm listening...")
@@ -296,10 +297,15 @@ class VoiceSession:
         
         finally:
             self.audio_buffer = []
-            # Reset wake word model to prevent immediate re-trigger
+            # Enable cooldown to prevent immediate re-trigger
+            self.wake_word_cooldown = True
+            # Reset wake word model
             self.oww_model.reset()
-            # Small delay before listening for wake word again
-            await asyncio.sleep(0.5)
+            # Longer delay before listening for wake word again
+            await asyncio.sleep(2.0)
+            # Reset again after delay to clear any buffered audio
+            self.oww_model.reset()
+            self.wake_word_cooldown = False
             await self.send_state(State.WAITING_FOR_WAKE_WORD)
 
 
