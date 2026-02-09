@@ -151,7 +151,9 @@ class VoiceSession:
             segments, info = self.whisper_model.transcribe(
                 f.name,
                 beam_size=5,
-                language="en"
+                language="en",
+                vad_filter=True,  # Filter out non-speech
+                vad_parameters=dict(min_silence_duration_ms=500),
             )
             text = " ".join([segment.text for segment in segments]).strip()
             Path(f.name).unlink()  # Clean up
@@ -205,6 +207,8 @@ class VoiceSession:
 
         if self.state == State.WAITING_FOR_WAKE_WORD:
             if self.process_wake_word(audio_chunk):
+                # Reset wake word model to clear internal buffers
+                self.oww_model.reset()
                 await self.send_state(State.LISTENING, "I'm listening...")
                 self.audio_buffer = []
                 self.silence_frames = 0
@@ -236,9 +240,16 @@ class VoiceSession:
             # Combine audio buffer
             audio_data = np.concatenate(self.audio_buffer)
             
+            # Check if there's actually speech (not just silence)
+            rms = np.sqrt(np.mean(audio_data ** 2))
+            if rms < 0.01:
+                logger.info("Audio too quiet, skipping transcription")
+                await self.send_state(State.WAITING_FOR_WAKE_WORD, "Didn't hear anything")
+                return
+            
             # Transcribe
             text = await self.transcribe(audio_data)
-            if not text:
+            if not text or len(text.strip()) < 2:
                 await self.send_state(State.WAITING_FOR_WAKE_WORD, "Didn't catch that")
                 return
             
@@ -268,6 +279,10 @@ class VoiceSession:
         
         finally:
             self.audio_buffer = []
+            # Reset wake word model to prevent immediate re-trigger
+            self.oww_model.reset()
+            # Small delay before listening for wake word again
+            await asyncio.sleep(0.5)
             await self.send_state(State.WAITING_FOR_WAKE_WORD)
 
 
