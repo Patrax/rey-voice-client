@@ -17,7 +17,8 @@ class ReyVoiceClient {
     
     // UI elements
     this.app = document.getElementById('app');
-    this.connectionStatus = document.getElementById('connection-status');
+    this.connectionDot = document.getElementById('connection-dot');
+    this.statusText = document.getElementById('status');
     this.message = document.getElementById('message');
     this.visualizer = document.getElementById('visualizer');
     this.errorDiv = document.getElementById('error');
@@ -111,8 +112,7 @@ class ReyVoiceClient {
   connect() {
     if (this.socket?.readyState === WebSocket.OPEN) return;
     
-    this.connectionStatus.textContent = 'Connecting...';
-    this.connectionStatus.className = 'status';
+    this.statusText.textContent = 'Connecting...';
     
     console.log('Attempting to connect to:', this.serverUrl);
     
@@ -122,8 +122,8 @@ class ReyVoiceClient {
       
       this.socket.onopen = () => {
         console.log('Connected to Rey server');
-        this.connectionStatus.textContent = 'Connected';
-        this.connectionStatus.className = 'status connected';
+        this.connectionDot.classList.add('connected');
+        this.statusText.textContent = 'Connected';
         this.reconnectAttempts = 0;
         this.hideError();
         
@@ -133,8 +133,8 @@ class ReyVoiceClient {
       
       this.socket.onclose = () => {
         console.log('Disconnected from Rey server');
-        this.connectionStatus.textContent = 'Disconnected';
-        this.connectionStatus.className = 'status disconnected';
+        this.connectionDot.classList.remove('connected');
+        this.statusText.textContent = 'Disconnected';
         this.stopKeepalive();
         this.attemptReconnect();
       };
@@ -224,16 +224,20 @@ class ReyVoiceClient {
     } else {
       switch (state) {
         case 'waiting':
-          this.message.textContent = 'Say "Hey Rey" to start';
+          this.message.textContent = "Say 'Hey Jarvis' to start";
+          this.statusText.textContent = 'Ready';
           break;
         case 'listening':
-          this.message.textContent = 'Listening...';
+          this.message.textContent = "I'm listening...";
+          this.statusText.textContent = 'Listening';
           break;
         case 'processing':
-          this.message.textContent = 'Thinking...';
+          this.message.textContent = 'Let me think...';
+          this.statusText.textContent = 'Processing';
           break;
         case 'speaking':
-          this.message.textContent = 'Speaking...';
+          this.message.textContent = '';
+          this.statusText.textContent = 'Speaking';
           break;
       }
     }
