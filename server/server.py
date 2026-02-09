@@ -409,7 +409,7 @@ async def voice_endpoint(websocket: WebSocket):
     
     try:
         await session.initialize()
-        await session.send_state(State.WAITING_FOR_WAKE_WORD, "Say 'Hey Rey' to start")
+        await session.send_state(State.WAITING_FOR_WAKE_WORD, "Say 'Hey Jarvis' to start")
         
         while True:
             data = await websocket.receive()
