@@ -350,7 +350,10 @@ class VoiceSession:
 
     async def process_speech(self):
         """Process captured speech: transcribe, query OpenClaw, respond."""
+        import time
+        timings = {}
         await self.send_state(State.PROCESSING, "Thinking...")
+        pipeline_start = time.time()
         
         try:
             # Combine audio buffer
@@ -370,13 +373,18 @@ class VoiceSession:
                 return
             
             # Transcribe
+            t0 = time.time()
             text = await self.transcribe(audio_data)
+            timings['stt'] = time.time() - t0
+            
             if not text or len(text.strip()) < 2:
                 await self.send_state(State.WAITING_FOR_WAKE_WORD, "Didn't catch that")
                 return
             
             # Query OpenClaw
+            t0 = time.time()
             response = await self.ask_openclaw(text)
+            timings['llm'] = time.time() - t0
             logger.info(f"Rey: {response}")
             
             # Detect expression based on response content
@@ -392,9 +400,15 @@ class VoiceSession:
             
             # Synthesize and send audio
             await self.send_state(State.SPEAKING, response[:50] + "...")
+            t0 = time.time()
             audio = await self.synthesize_speech(response)
+            timings['tts'] = time.time() - t0
             if audio:
                 await self.send_audio(audio)
+            
+            # Log timing breakdown
+            timings['total'] = time.time() - pipeline_start
+            logger.info(f"⏱️ Timing: STT={timings['stt']:.2f}s | LLM={timings['llm']:.2f}s | TTS={timings['tts']:.2f}s | Total={timings['total']:.2f}s")
             
         except Exception as e:
             logger.error(f"Error processing speech: {e}")
