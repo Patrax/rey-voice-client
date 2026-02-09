@@ -4,8 +4,8 @@ const path = require('path');
 let mainWindow = null;
 let tray = null;
 
-// Server configuration
-const SERVER_URL = process.env.REY_SERVER_URL || 'ws://ubuntuserver:8765/voice';
+// Server configuration - default to production Cloudflare tunnel
+const SERVER_URL = process.env.REY_SERVER_URL || 'wss://rey.patriciojeri.com/voice';
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -25,8 +25,10 @@ function createWindow() {
 
   mainWindow.loadFile('index.html');
   
-  // Open DevTools in development
-  mainWindow.webContents.openDevTools({ mode: 'detach' });
+  // Only open DevTools in development (not in packaged app)
+  if (!app.isPackaged && process.env.NODE_ENV !== 'production') {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
   
   // Log renderer crashes
   mainWindow.webContents.on('render-process-gone', (event, details) => {

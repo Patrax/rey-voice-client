@@ -5,6 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "start:prod": "NODE_ENV=production electron .",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
@@ -18,20 +19,30 @@
   },
   "build": {
     "appId": "com.openclaw.rey-voice",
-    "productName": "Rey Voice",
+    "productName": "Rey",
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "**/*",
+      "!dist/**"
+    ],
     "mac": {
       "category": "public.app-category.utilities",
-      "icon": "assets/icon.icns"
+      "target": "dmg"
     },
     "win": {
-      "icon": "assets/icon.ico"
+      "target": "nsis"
     },
     "linux": {
-      "icon": "assets/icon.png",
+      "target": "AppImage",
       "category": "Utility"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ]
   }
 }
