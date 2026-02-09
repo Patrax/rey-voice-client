@@ -147,14 +147,6 @@ class VoiceSession:
         audio_int16 = (audio_chunk * 32768).astype(np.int16)
         prediction = self.oww_model.predict(audio_int16)
         
-        # Debug: log predictions periodically
-        if not hasattr(self, '_debug_counter'):
-            self._debug_counter = 0
-        self._debug_counter += 1
-        if self._debug_counter % 100 == 0:  # Every ~3 seconds
-            # Debug: uncomment to see wake word scores
-            # logger.debug(f"Wake word predictions: {prediction}")
-        
         # Check all predictions for any above threshold
         for key, score in prediction.items():
             if score > config.WAKE_WORD_THRESHOLD:
