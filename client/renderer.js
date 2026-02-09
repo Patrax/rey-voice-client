@@ -13,6 +13,7 @@ class ReyVoiceClient {
     this.state = 'waiting';
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
+    this.isPlayingAudio = false;
     
     // UI elements
     this.app = document.getElementById('app');
@@ -197,13 +198,19 @@ class ReyVoiceClient {
   handleMessage(data) {
     switch (data.type) {
       case 'state':
-        this.setState(data.state, data.message);
+        // Ignore state changes while audio is playing
+        if (!this.isPlayingAudio) {
+          this.setState(data.state, data.message);
+        }
         break;
       case 'response':
         this.message.textContent = data.rey_text.substring(0, 100) + (data.rey_text.length > 100 ? '...' : '');
         break;
       case 'error':
         this.showError(data.message);
+        break;
+      case 'keepalive':
+        // Ignore keepalive messages
         break;
     }
   }
@@ -260,21 +267,26 @@ class ReyVoiceClient {
       // Use Audio element for reliable MP3 playback
       const audio = new Audio(url);
       
+      // Lock into speaking state
+      this.isPlayingAudio = true;
+      this.setState('speaking', 'Speaking...');
+      
       audio.onended = () => {
         URL.revokeObjectURL(url);
-        if (this.state === 'speaking') {
-          this.setState('waiting');
-        }
+        this.isPlayingAudio = false;
+        this.setState('waiting', "Say 'Hey Jarvis' to start");
       };
       
       audio.onerror = (err) => {
         console.error('Audio playback error:', err);
         URL.revokeObjectURL(url);
+        this.isPlayingAudio = false;
       };
       
       await audio.play();
     } catch (err) {
       console.error('Audio playback error:', err);
+      this.isPlayingAudio = false;
     }
   }
 
