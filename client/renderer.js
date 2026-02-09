@@ -72,20 +72,25 @@ class ReyVoiceClient {
       this.processor = this.audioContext.createScriptProcessor(512, 1, 1);
       
       this.processor.onaudioprocess = (e) => {
-        if (this.socket?.readyState === WebSocket.OPEN) {
+        try {
           const inputData = e.inputBuffer.getChannelData(0);
           
-          // Convert float32 to int16
-          const int16Data = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-          }
-          
-          // Send to server
-          this.socket.send(int16Data.buffer);
-          
-          // Update visualizer
+          // Update visualizer regardless of connection
           this.updateVisualizer(inputData);
+          
+          // Only send if connected
+          if (this.socket?.readyState === WebSocket.OPEN) {
+            // Convert float32 to int16
+            const int16Data = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+            }
+            
+            // Send to server
+            this.socket.send(int16Data.buffer);
+          }
+        } catch (err) {
+          console.error('Audio processing error:', err);
         }
       };
 
@@ -105,8 +110,11 @@ class ReyVoiceClient {
     this.connectionStatus.textContent = 'Connecting...';
     this.connectionStatus.className = 'status';
     
+    console.log('Attempting to connect to:', this.serverUrl);
+    
     try {
       this.socket = new WebSocket(this.serverUrl);
+      this.socket.binaryType = 'arraybuffer';
       
       this.socket.onopen = () => {
         console.log('Connected to Rey server');

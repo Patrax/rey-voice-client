@@ -25,6 +25,14 @@ function createWindow() {
 
   mainWindow.loadFile('index.html');
   
+  // Open DevTools in development
+  mainWindow.webContents.openDevTools({ mode: 'detach' });
+  
+  // Log renderer crashes
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('Renderer crashed:', details);
+  });
+  
   // Hide instead of close
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
