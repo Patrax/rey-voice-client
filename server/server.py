@@ -37,7 +37,15 @@ faster_whisper = None
 piper = None
 hey_rey_detector = None
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+# Reduce noise from HTTP libraries
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("faster_whisper").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Rey Voice Server")
@@ -144,7 +152,8 @@ class VoiceSession:
             self._debug_counter = 0
         self._debug_counter += 1
         if self._debug_counter % 100 == 0:  # Every ~3 seconds
-            logger.debug(f"Wake word predictions: {prediction}")
+            # Debug: uncomment to see wake word scores
+            # logger.debug(f"Wake word predictions: {prediction}")
         
         # Check all predictions for any above threshold
         for key, score in prediction.items():
