@@ -34,6 +34,7 @@ import config
 openwakeword = None
 faster_whisper = None
 piper = None
+hey_rey_detector = None
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -69,15 +70,23 @@ class VoiceSession:
 
     async def initialize(self):
         """Initialize models (lazy load)."""
-        global openwakeword, faster_whisper, piper
+        global openwakeword, faster_whisper, piper, hey_rey_detector
 
-        # Load OpenWakeWord
-        if openwakeword is None:
-            from openwakeword.model import Model as OWWModel
-            openwakeword = OWWModel
-
-        self.oww_model = openwakeword()
-        logger.info(f"Wake word model loaded: {config.WAKE_WORD}")
+        # Load Wake Word detector
+        if config.WAKE_WORD == "hey_rey":
+            # Use custom Hey Rey detector
+            if hey_rey_detector is None:
+                from hey_rey_detector import HeyReyDetector
+                hey_rey_detector = HeyReyDetector
+            self.oww_model = hey_rey_detector(threshold=config.WAKE_WORD_THRESHOLD)
+            logger.info("Wake word model loaded: hey_rey (custom)")
+        else:
+            # Use OpenWakeWord
+            if openwakeword is None:
+                from openwakeword.model import Model as OWWModel
+                openwakeword = OWWModel
+            self.oww_model = openwakeword()
+            logger.info(f"Wake word model loaded: {config.WAKE_WORD}")
 
         # Load Whisper
         if faster_whisper is None:
