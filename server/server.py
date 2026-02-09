@@ -17,6 +17,7 @@ import json
 import logging
 import struct
 import tempfile
+import uuid
 import wave
 from enum import Enum
 from pathlib import Path
@@ -67,6 +68,10 @@ class VoiceSession:
         self.whisper_model = None
         self.tts_voice = None
         self.wake_word_cooldown = False
+        # Session management for conversation continuity
+        self.session_id = str(uuid.uuid4())
+        self.conversation_history = []
+        logger.info(f"New session created: {self.session_id}")
 
     async def initialize(self):
         """Initialize models (lazy load)."""
@@ -199,6 +204,13 @@ class VoiceSession:
 
     async def ask_openclaw(self, text: str) -> str:
         """Send text to OpenClaw and get response."""
+        # Add user message to history
+        self.conversation_history.append({"role": "user", "content": text})
+        
+        # Keep last 20 messages to avoid context overflow
+        if len(self.conversation_history) > 20:
+            self.conversation_history = self.conversation_history[-20:]
+        
         async def do_request():
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
@@ -210,13 +222,16 @@ class VoiceSession:
                     },
                     json={
                         "model": "openclaw",
-                        "messages": [{"role": "user", "content": text}],
+                        "messages": self.conversation_history,
                         "stream": False,
                     }
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data["choices"][0]["message"]["content"]
+                assistant_response = data["choices"][0]["message"]["content"]
+                # Add assistant response to history
+                self.conversation_history.append({"role": "assistant", "content": assistant_response})
+                return assistant_response
         
         # Run request with keepalive pings to prevent Cloudflare timeout
         request_task = asyncio.create_task(do_request())
