@@ -289,9 +289,11 @@ async def voice_endpoint(websocket: WebSocket):
             if "bytes" in data:
                 await session.handle_audio(data["bytes"])
             elif "text" in data:
-                # Handle text commands (e.g., push-to-talk trigger)
+                # Handle text commands (e.g., push-to-talk trigger, keepalive)
                 msg = json.loads(data["text"])
-                if msg.get("type") == "push_to_talk":
+                if msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                elif msg.get("type") == "push_to_talk":
                     if session.state == State.WAITING_FOR_WAKE_WORD:
                         await session.send_state(State.LISTENING, "I'm listening...")
                         session.audio_buffer = []

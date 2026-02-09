@@ -125,12 +125,16 @@ class ReyVoiceClient {
         this.connectionStatus.className = 'status connected';
         this.reconnectAttempts = 0;
         this.hideError();
+        
+        // Start keepalive pings every 30 seconds
+        this.startKeepalive();
       };
       
       this.socket.onclose = () => {
         console.log('Disconnected from Rey server');
         this.connectionStatus.textContent = 'Disconnected';
         this.connectionStatus.className = 'status disconnected';
+        this.stopKeepalive();
         this.attemptReconnect();
       };
       
@@ -153,6 +157,22 @@ class ReyVoiceClient {
       console.error('Connection failed:', err);
       this.showError('Failed to connect to server');
       this.attemptReconnect();
+    }
+  }
+
+  startKeepalive() {
+    this.stopKeepalive(); // Clear any existing
+    this.keepaliveInterval = setInterval(() => {
+      if (this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 30000); // Every 30 seconds
+  }
+
+  stopKeepalive() {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
     }
   }
 
