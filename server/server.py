@@ -73,7 +73,6 @@ class VoiceSession:
         # Load OpenWakeWord
         if openwakeword is None:
             from openwakeword.model import Model as OWWModel
-            global openwakeword
             openwakeword = OWWModel
 
         self.oww_model = openwakeword()
