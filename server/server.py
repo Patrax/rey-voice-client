@@ -208,6 +208,19 @@ class VoiceSession:
         Uses 'user' field for stable session key - OpenClaw maintains history
         and provides full workspace context (MEMORY.md, SOUL.md, etc.)
         """
+        # System prompt optimized for voice output
+        voice_system_prompt = """You are responding via voice (text-to-speech). Optimize your responses:
+
+- Be concise and conversational - this will be spoken aloud
+- NO markdown formatting (no **, ##, -, bullets, etc.)
+- NO lists - use natural flowing sentences instead
+- Abbreviate where natural: "3 PM" not "3:00 PM", "tomorrow" not "Tuesday, February 10th"
+- For calendar events: just say the key info (time + brief description), skip full titles
+- For multiple items: summarize or mention count ("you have 3 meetings") rather than reading each
+- Numbers: say "about 50" not "approximately 49.7"
+- Keep responses under 2-3 sentences when possible
+- Sound natural, like talking to a friend"""
+
         async def do_request():
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
@@ -219,7 +232,10 @@ class VoiceSession:
                     },
                     json={
                         "model": "openclaw",
-                        "messages": [{"role": "user", "content": text}],
+                        "messages": [
+                            {"role": "system", "content": voice_system_prompt},
+                            {"role": "user", "content": text}
+                        ],
                         "user": "voice-client",  # Stable session key - enables full workspace context!
                         "stream": False,
                     }
