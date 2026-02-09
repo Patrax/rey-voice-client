@@ -233,7 +233,7 @@ class VoiceSession:
                         "x-openclaw-agent-id": config.OPENCLAW_AGENT_ID,
                     },
                     json={
-                        "model": "openclaw",
+                        "model": config.OPENCLAW_MODEL or "openclaw",
                         "messages": [
                             {"role": "system", "content": voice_system_prompt},
                             {"role": "user", "content": text}
