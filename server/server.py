@@ -163,23 +163,40 @@ class VoiceSession:
 
     async def ask_openclaw(self, text: str) -> str:
         """Send text to OpenClaw and get response."""
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{config.OPENCLAW_GATEWAY_URL}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {config.OPENCLAW_GATEWAY_TOKEN}",
-                    "Content-Type": "application/json",
-                    "x-openclaw-agent-id": config.OPENCLAW_AGENT_ID,
-                },
-                json={
-                    "model": "openclaw",
-                    "messages": [{"role": "user", "content": text}],
-                    "stream": False,
-                }
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+        async def do_request():
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{config.OPENCLAW_GATEWAY_URL}/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {config.OPENCLAW_GATEWAY_TOKEN}",
+                        "Content-Type": "application/json",
+                        "x-openclaw-agent-id": config.OPENCLAW_AGENT_ID,
+                    },
+                    json={
+                        "model": "openclaw",
+                        "messages": [{"role": "user", "content": text}],
+                        "stream": False,
+                    }
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+        
+        # Run request with keepalive pings to prevent Cloudflare timeout
+        request_task = asyncio.create_task(do_request())
+        
+        while not request_task.done():
+            try:
+                # Send keepalive every 5 seconds while waiting
+                await asyncio.wait_for(asyncio.shield(request_task), timeout=5.0)
+            except asyncio.TimeoutError:
+                # Still waiting - send a ping to keep connection alive
+                try:
+                    await self.websocket.send_json({"type": "keepalive", "status": "thinking"})
+                except:
+                    pass  # Connection might be closed
+        
+        return await request_task
 
     async def synthesize_speech(self, text: str) -> bytes:
         """Convert text to speech audio."""
