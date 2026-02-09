@@ -153,6 +153,32 @@ class VoiceSession:
         rms = np.sqrt(np.mean(audio_chunk ** 2))
         return rms < threshold
 
+    def detect_expression(self, text: str) -> str:
+        """Detect appropriate expression based on response text."""
+        text_lower = text.lower()
+        
+        # Check for various sentiment indicators
+        if any(word in text_lower for word in ['sorry', 'unfortunately', 'sad', 'bad news', "can't", 'unable']):
+            return 'sad'
+        elif any(word in text_lower for word in ['love', 'heart', '❤', '💕', 'amazing', 'wonderful']):
+            return 'love'
+        elif any(word in text_lower for word in ['haha', 'lol', 'funny', '😂', '🤣', 'hilarious', 'joke']):
+            return 'laughing'
+        elif any(word in text_lower for word in ['wow', 'whoa', 'amazing', 'incredible', '!!']):
+            return 'surprised'
+        elif any(word in text_lower for word in ['hmm', 'interesting', 'let me think', 'not sure', 'maybe']):
+            return 'confused'
+        elif any(word in text_lower for word in ['great', 'awesome', 'perfect', 'excellent', 'yay', '🎉']):
+            return 'excited'
+        elif any(word in text_lower for word in ['good', 'nice', 'sure', 'okay', 'happy', '😊', '🙂']):
+            return 'happy'
+        elif any(word in text_lower for word in [';)', 'wink', 'heh', 'between us']):
+            return 'wink'
+        elif any(word in text_lower for word in ['🦞', 'lobster']):
+            return 'excited'  # Rey's signature!
+        else:
+            return 'happy'  # Default to happy
+
     async def transcribe(self, audio_data: np.ndarray) -> str:
         """Transcribe audio to text using Whisper."""
         # Save to temp file (faster-whisper needs a file)
@@ -325,11 +351,15 @@ class VoiceSession:
             response = await self.ask_openclaw(text)
             logger.info(f"Rey: {response}")
             
-            # Send text response first
+            # Detect expression based on response content
+            expression = self.detect_expression(response)
+            
+            # Send text response with expression
             await self.websocket.send_json({
                 "type": "response",
                 "user_text": text,
-                "rey_text": response
+                "rey_text": response,
+                "expression": expression
             })
             
             # Synthesize and send audio

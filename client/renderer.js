@@ -22,6 +22,8 @@ class ReyVoiceClient {
     this.message = document.getElementById('message');
     this.visualizer = document.getElementById('visualizer');
     this.errorDiv = document.getElementById('error');
+    this.character = document.getElementById('character');
+    this.currentExpression = 'neutral';
     
     this.init();
   }
@@ -204,7 +206,11 @@ class ReyVoiceClient {
         }
         break;
       case 'response':
-        this.message.textContent = data.rey_text.substring(0, 100) + (data.rey_text.length > 100 ? '...' : '');
+        this.message.textContent = data.rey_text.substring(0, 80) + (data.rey_text.length > 80 ? '...' : '');
+        // Set expression from server metadata
+        if (data.expression) {
+          this.setExpression(data.expression);
+        }
         break;
       case 'error':
         this.showError(data.message);
@@ -224,22 +230,34 @@ class ReyVoiceClient {
     } else {
       switch (state) {
         case 'waiting':
-          this.message.textContent = "Say 'Hey Jarvis' to start";
-          this.statusText.textContent = 'Ready';
+          this.message.textContent = "Say 'Hey Jarvis'!";
+          this.statusText.textContent = 'READY';
+          this.setExpression('neutral');
           break;
         case 'listening':
           this.message.textContent = "I'm listening...";
-          this.statusText.textContent = 'Listening';
+          this.statusText.textContent = 'LISTENING';
+          this.setExpression('listening');
           break;
         case 'processing':
-          this.message.textContent = 'Let me think...';
-          this.statusText.textContent = 'Processing';
+          this.message.textContent = 'Hmm let me think...';
+          this.statusText.textContent = 'THINKING';
+          this.setExpression('thinking');
           break;
         case 'speaking':
-          this.message.textContent = '';
-          this.statusText.textContent = 'Speaking';
+          this.statusText.textContent = 'SPEAKING';
+          this.setExpression('speaking');
           break;
       }
+    }
+  }
+
+  setExpression(expression) {
+    // Remove old expression class
+    if (this.character) {
+      this.character.className = 'character';
+      this.character.classList.add(`expr-${expression}`);
+      this.currentExpression = expression;
     }
   }
 
