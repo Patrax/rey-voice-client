@@ -39,6 +39,9 @@ class ReyVoiceClient {
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
     
+    // Set initial expression
+    this.setExpression('neutral');
+    
     // Connect first, then start audio
     this.connect();
     setTimeout(() => this.setupAudio(), 500);
