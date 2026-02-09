@@ -35,7 +35,7 @@ openwakeword = None
 faster_whisper = None
 piper = None
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Rey Voice Server")
@@ -124,14 +124,21 @@ class VoiceSession:
         audio_int16 = (audio_chunk * 32768).astype(np.int16)
         prediction = self.oww_model.predict(audio_int16)
         
-        # Check the specific wake word we're looking for
-        wake_word_key = config.WAKE_WORD
-        if wake_word_key in prediction and prediction[wake_word_key] > config.WAKE_WORD_THRESHOLD:
-            logger.info(f"Wake word detected! ({wake_word_key}: {prediction[wake_word_key]:.2f})")
-            return True
+        # Debug: log predictions periodically
+        if not hasattr(self, '_debug_counter'):
+            self._debug_counter = 0
+        self._debug_counter += 1
+        if self._debug_counter % 100 == 0:  # Every ~3 seconds
+            logger.debug(f"Wake word predictions: {prediction}")
+        
+        # Check all predictions for any above threshold
+        for key, score in prediction.items():
+            if score > config.WAKE_WORD_THRESHOLD:
+                logger.info(f"Wake word detected! ({key}: {score:.2f})")
+                return True
         return False
 
-    def detect_silence(self, audio_chunk: np.ndarray, threshold: float = 0.01) -> bool:
+    def detect_silence(self, audio_chunk: np.ndarray, threshold: float = 0.005) -> bool:
         """Detect if audio chunk is silence."""
         rms = np.sqrt(np.mean(audio_chunk ** 2))
         return rms < threshold
@@ -205,11 +212,14 @@ class VoiceSession:
         elif self.state == State.LISTENING:
             self.audio_buffer.append(audio_chunk)
             
+            # Minimum 1 second of audio before checking for silence
+            min_frames = config.SAMPLE_RATE / config.CHUNK_SIZE * 1.0
+            
             # Check for end of speech (silence detection)
-            if self.detect_silence(audio_chunk):
+            if len(self.audio_buffer) > min_frames and self.detect_silence(audio_chunk):
                 self.silence_frames += 1
-                # ~1.5 seconds of silence = end of speech
-                if self.silence_frames > (config.SAMPLE_RATE / config.CHUNK_SIZE * 1.5):
+                # ~2 seconds of silence = end of speech
+                if self.silence_frames > (config.SAMPLE_RATE / config.CHUNK_SIZE * 2.0):
                     await self.process_speech()
             else:
                 self.silence_frames = 0
