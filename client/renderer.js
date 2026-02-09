@@ -257,15 +257,16 @@ class ReyVoiceClient {
   }
 
   setExpression(expression) {
-    // Remove old expression class
-    console.log('Setting expression:', expression, 'character:', this.character);
     if (this.character) {
-      this.character.className = 'character';
+      // Remove all expr- classes first
+      this.character.classList.forEach(cls => {
+        if (cls.startsWith('expr-')) {
+          this.character.classList.remove(cls);
+        }
+      });
       this.character.classList.add(`expr-${expression}`);
       this.currentExpression = expression;
-      console.log('Expression set, classes:', this.character.className);
-    } else {
-      console.error('Character element not found!');
+      console.log('Expression:', expression);
     }
   }
 
