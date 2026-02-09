@@ -255,10 +255,14 @@ class ReyVoiceClient {
 
   setExpression(expression) {
     // Remove old expression class
+    console.log('Setting expression:', expression, 'character:', this.character);
     if (this.character) {
       this.character.className = 'character';
       this.character.classList.add(`expr-${expression}`);
       this.currentExpression = expression;
+      console.log('Expression set, classes:', this.character.className);
+    } else {
+      console.error('Character element not found!');
     }
   }
 
