@@ -203,14 +203,11 @@ class VoiceSession:
         return text
 
     async def ask_openclaw(self, text: str) -> str:
-        """Send text to OpenClaw and get response."""
-        # Add user message to history
-        self.conversation_history.append({"role": "user", "content": text})
+        """Send text to OpenClaw and get response.
         
-        # Keep last 20 messages to avoid context overflow
-        if len(self.conversation_history) > 20:
-            self.conversation_history = self.conversation_history[-20:]
-        
+        Uses 'user' field for stable session key - OpenClaw maintains history
+        and provides full workspace context (MEMORY.md, SOUL.md, etc.)
+        """
         async def do_request():
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
@@ -222,16 +219,14 @@ class VoiceSession:
                     },
                     json={
                         "model": "openclaw",
-                        "messages": self.conversation_history,
+                        "messages": [{"role": "user", "content": text}],
+                        "user": "voice-client",  # Stable session key - enables full workspace context!
                         "stream": False,
                     }
                 )
                 response.raise_for_status()
                 data = response.json()
-                assistant_response = data["choices"][0]["message"]["content"]
-                # Add assistant response to history
-                self.conversation_history.append({"role": "assistant", "content": assistant_response})
-                return assistant_response
+                return data["choices"][0]["message"]["content"]
         
         # Run request with keepalive pings to prevent Cloudflare timeout
         request_task = asyncio.create_task(do_request())
