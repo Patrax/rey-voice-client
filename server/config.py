@@ -24,6 +24,8 @@ WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base.en")  # tiny.en, base.en, small
 # TTS settings  
 TTS_MODEL = os.getenv("TTS_MODEL", "en_US-lessac-medium")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel default
 
 # Server
 HOST = os.getenv("HOST", "0.0.0.0")

@@ -200,33 +200,58 @@ class VoiceSession:
         return await request_task
 
     async def synthesize_speech(self, text: str) -> bytes:
-        """Convert text to speech audio using OpenAI TTS."""
-        openai_key = config.OPENAI_API_KEY
-        if not openai_key:
-            logger.warning("No OpenAI API key for TTS, response will be text-only")
-            return b""
+        """Convert text to speech audio using ElevenLabs (primary) or OpenAI (fallback)."""
         
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    "https://api.openai.com/v1/audio/speech",
-                    headers={
-                        "Authorization": f"Bearer {openai_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": "tts-1",
-                        "input": text[:4096],  # Max 4096 chars
-                        "voice": "nova",  # Options: alloy, echo, fable, onyx, nova, shimmer
-                        "response_format": "mp3",
-                    }
-                )
-                response.raise_for_status()
-                logger.info(f"TTS generated {len(response.content)} bytes")
-                return response.content
-        except Exception as e:
-            logger.error(f"TTS failed: {e}")
-            return b""
+        # Try ElevenLabs first
+        if config.ELEVENLABS_API_KEY:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        f"https://api.elevenlabs.io/v1/text-to-speech/{config.ELEVENLABS_VOICE_ID}",
+                        headers={
+                            "xi-api-key": config.ELEVENLABS_API_KEY,
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "text": text[:5000],
+                            "model_id": "eleven_turbo_v2_5",
+                            "voice_settings": {
+                                "stability": 0.5,
+                                "similarity_boost": 0.75,
+                            }
+                        }
+                    )
+                    response.raise_for_status()
+                    logger.info(f"ElevenLabs TTS generated {len(response.content)} bytes")
+                    return response.content
+            except Exception as e:
+                logger.error(f"ElevenLabs TTS failed: {e}, trying OpenAI fallback")
+        
+        # Fallback to OpenAI
+        if config.OPENAI_API_KEY:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        "https://api.openai.com/v1/audio/speech",
+                        headers={
+                            "Authorization": f"Bearer {config.OPENAI_API_KEY}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": "tts-1",
+                            "input": text[:4096],
+                            "voice": "nova",
+                            "response_format": "mp3",
+                        }
+                    )
+                    response.raise_for_status()
+                    logger.info(f"OpenAI TTS generated {len(response.content)} bytes")
+                    return response.content
+            except Exception as e:
+                logger.error(f"OpenAI TTS failed: {e}")
+        
+        logger.warning("No TTS available, response will be text-only")
+        return b""
 
     async def handle_audio(self, audio_data: bytes):
         """Process incoming audio chunk from client."""
