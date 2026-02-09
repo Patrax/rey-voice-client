@@ -297,6 +297,12 @@ class VoiceSession:
             rms = np.sqrt(np.mean(audio_data ** 2))
             if rms < 0.01:
                 logger.info("Audio too quiet, skipping transcription")
+                # Enable cooldown to prevent rapid re-triggering
+                self.wake_word_cooldown = True
+                self.oww_model.reset()
+                await asyncio.sleep(1.5)
+                self.oww_model.reset()
+                self.wake_word_cooldown = False
                 await self.send_state(State.WAITING_FOR_WAKE_WORD, "Didn't hear anything")
                 return
             
@@ -332,12 +338,12 @@ class VoiceSession:
         
         finally:
             self.audio_buffer = []
-            # Enable cooldown to prevent immediate re-trigger
+            # Enable cooldown to prevent immediate re-trigger (especially from TTS echo)
             self.wake_word_cooldown = True
             # Reset wake word model
             self.oww_model.reset()
-            # Longer delay before listening for wake word again
-            await asyncio.sleep(2.0)
+            # Longer delay to let TTS audio finish and clear from mic
+            await asyncio.sleep(3.0)
             # Reset again after delay to clear any buffered audio
             self.oww_model.reset()
             self.wake_word_cooldown = False
