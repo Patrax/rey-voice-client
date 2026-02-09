@@ -35,9 +35,11 @@ class ReyVoiceClient {
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
     
-    // Connect first, then start audio after small delay
+    // Connect first - disable audio for testing
     this.connect();
-    setTimeout(() => this.setupAudio(), 500);
+    // TODO: Re-enable after WebSocket confirmed working
+    // setTimeout(() => this.setupAudio(), 500);
+    console.log('Audio disabled for testing');
   }
 
   createVisualizerBars() {
