@@ -46,9 +46,12 @@ let settingsWindow = null;
 let tray = null;
 
 function createWindow() {
+  // Start in compact mode (character only)
+  const initialSize = { width: 300, height: 300 };
+  
   mainWindow = new BrowserWindow({
-    width: 400,
-    height: 350,
+    width: initialSize.width,
+    height: initialSize.height,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -91,7 +94,7 @@ function createWindow() {
   const { screen } = require('electron');
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
-  mainWindow.setPosition(width - 420, height - 370);
+  mainWindow.setPosition(width - initialSize.width - 20, height - initialSize.height - 20);
 }
 
 function createSettingsWindow() {
@@ -375,4 +378,32 @@ ipcMain.on('hide-window', () => {
 
 ipcMain.on('open-settings', () => {
   createSettingsWindow();
+});
+
+// Window resizing for compact/expanded modes
+const WINDOW_SIZES = {
+  compact: { width: 300, height: 300 },
+  expanded: { width: 400, height: 450 }
+};
+
+ipcMain.on('resize-window', (event, mode) => {
+  if (!mainWindow) return;
+  
+  const size = WINDOW_SIZES[mode];
+  if (!size) return;
+  
+  // Get current position to keep bottom-right anchored
+  const [currentX, currentY] = mainWindow.getPosition();
+  const [currentWidth, currentHeight] = mainWindow.getSize();
+  
+  // Calculate new position to anchor bottom-right corner
+  const newX = currentX + (currentWidth - size.width);
+  const newY = currentY + (currentHeight - size.height);
+  
+  mainWindow.setBounds({
+    x: newX,
+    y: newY,
+    width: size.width,
+    height: size.height
+  }, true); // animate
 });

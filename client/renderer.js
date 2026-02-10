@@ -446,7 +446,12 @@ class ReyVoiceClient {
     this.transcriptBtn.classList.toggle('active');
     
     if (!isVisible) {
+      // Expanding to show transcript
+      window.electronAPI.resizeWindow('expanded');
       this.renderTranscript();
+    } else {
+      // Collapsing to compact character view
+      window.electronAPI.resizeWindow('compact');
     }
   }
 
