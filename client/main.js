@@ -173,12 +173,36 @@ function registerShortcuts() {
       console.error('Invalid hotkey:', config.hotkey, err);
     }
   }
+  
+  // Settings shortcut (Cmd+, on Mac, Ctrl+, on others)
+  globalShortcut.register('CommandOrControl+,', () => {
+    createSettingsWindow();
+  });
 }
 
 app.whenReady().then(() => {
   createWindow();
   createTray();
   registerShortcuts();
+  
+  // macOS: Add app menu with Settings
+  if (process.platform === 'darwin') {
+    const appMenu = Menu.buildFromTemplate([
+      {
+        label: app.name,
+        submenu: [
+          { label: 'About Rey', role: 'about' },
+          { type: 'separator' },
+          { label: 'Settings...', accelerator: 'CommandOrControl+,', click: () => createSettingsWindow() },
+          { type: 'separator' },
+          { label: 'Hide Rey', accelerator: 'CommandOrControl+H', role: 'hide' },
+          { type: 'separator' },
+          { label: 'Quit', accelerator: 'CommandOrControl+Q', click: () => { app.isQuitting = true; app.quit(); } }
+        ]
+      }
+    ]);
+    Menu.setApplicationMenu(appMenu);
+  }
   
   // Send config to renderer when ready
   mainWindow.webContents.on('did-finish-load', () => {
