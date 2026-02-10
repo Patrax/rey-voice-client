@@ -47,7 +47,7 @@ let tray = null;
 
 function createWindow() {
   // Start in compact mode (character only)
-  const initialSize = { width: 300, height: 300 };
+  const initialSize = { width: 220, height: 240 };
   
   mainWindow = new BrowserWindow({
     width: initialSize.width,
@@ -382,7 +382,7 @@ ipcMain.on('open-settings', () => {
 
 // Window resizing for compact/expanded modes
 const WINDOW_SIZES = {
-  compact: { width: 300, height: 300 },
+  compact: { width: 220, height: 240 },
   expanded: { width: 400, height: 450 }
 };
 
