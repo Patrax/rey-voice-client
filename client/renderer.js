@@ -41,6 +41,8 @@ class ReyVoiceClient {
     
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
+    window.electronAPI.onPushToTalkStart(() => this.handlePushToTalkStart());
+    window.electronAPI.onPushToTalkStop(() => this.handlePushToTalkStop());
     window.electronAPI.onPushToWake(() => this.handlePushToWake());
     
     // Window control buttons
@@ -225,6 +227,10 @@ class ReyVoiceClient {
         // Ignore state changes while audio is playing
         if (!this.isPlayingAudio) {
           this.setState(data.state, data.message);
+          // Notify main process when we're back to waiting (listening stopped)
+          if (data.state === 'waiting') {
+            window.electronAPI.listeningStopped();
+          }
         }
         break;
       case 'response':
@@ -343,6 +349,20 @@ class ReyVoiceClient {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
     
     this.socket.send(JSON.stringify({ type: 'push_to_talk' }));
+  }
+
+  handlePushToTalkStart() {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    
+    // Start listening immediately
+    this.socket.send(JSON.stringify({ type: 'push_to_talk_start' }));
+  }
+
+  handlePushToTalkStop() {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    
+    // Stop listening and process immediately
+    this.socket.send(JSON.stringify({ type: 'push_to_talk_stop' }));
   }
 
   handlePushToWake() {

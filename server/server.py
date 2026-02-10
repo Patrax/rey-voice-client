@@ -471,6 +471,18 @@ async def voice_endpoint(websocket: WebSocket):
                     elif session.state == State.LISTENING:
                         # Already listening - process what we have
                         await session.process_speech()
+                elif msg.get("type") == "push_to_talk_start":
+                    # Start listening (first press)
+                    if session.state == State.WAITING_FOR_WAKE_WORD:
+                        logger.info("Push to talk: START")
+                        await session.send_state(State.LISTENING, "I'm listening...")
+                        session.audio_buffer = []
+                        session.silence_frames = 0
+                elif msg.get("type") == "push_to_talk_stop":
+                    # Stop listening and process (second press)
+                    if session.state == State.LISTENING:
+                        logger.info("Push to talk: STOP - processing")
+                        await session.process_speech()
                 elif msg.get("type") == "push_to_wake":
                     # Push to wake: same as detecting wake word (trigger listening mode)
                     if session.state == State.WAITING_FOR_WAKE_WORD:

@@ -141,6 +141,8 @@ function createTray() {
   });
 }
 
+let isListening = false;
+
 function triggerHotkey() {
   if (!mainWindow) return;
   
@@ -149,9 +151,21 @@ function triggerHotkey() {
   if (config.hotkeyMode === 'push_to_wake') {
     mainWindow.webContents.send('push-to-wake');
   } else {
-    mainWindow.webContents.send('push-to-talk');
+    // Toggle mode: press to start, press again to stop
+    if (isListening) {
+      mainWindow.webContents.send('push-to-talk-stop');
+      isListening = false;
+    } else {
+      mainWindow.webContents.send('push-to-talk-start');
+      isListening = true;
+    }
   }
 }
+
+// Reset listening state when processing is done
+ipcMain.on('listening-stopped', () => {
+  isListening = false;
+});
 
 function registerShortcuts() {
   // Unregister all first
