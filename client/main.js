@@ -13,7 +13,8 @@ function loadConfig() {
     hotkey: 'CommandOrControl+Shift+R',
     hotkeyMode: 'push_to_talk',
     replayHotkey: '',
-    transcriptHotkey: ''
+    transcriptHotkey: '',
+    wakeWordEnabled: true
   };
   
   if (fs.existsSync(configPath)) {
@@ -264,7 +265,8 @@ app.whenReady().then(() => {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.send('config', { 
       serverUrl: config.serverUrl, 
-      authToken: config.authToken 
+      authToken: config.authToken,
+      wakeWordEnabled: config.wakeWordEnabled
     });
   });
 });
@@ -289,7 +291,8 @@ app.on('will-quit', () => {
 ipcMain.handle('get-config', () => {
   return { 
     serverUrl: config.serverUrl, 
-    authToken: config.authToken 
+    authToken: config.authToken,
+    wakeWordEnabled: config.wakeWordEnabled
   };
 });
 

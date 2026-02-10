@@ -9,6 +9,7 @@ class SettingsManager {
     this.serverUrlInput = document.getElementById('serverUrl');
     this.authTokenInput = document.getElementById('authToken');
     this.toggleTokenBtn = document.getElementById('toggleToken');
+    this.wakeWordEnabledCheckbox = document.getElementById('wakeWordEnabled');
     this.hotkeyDisplay = document.getElementById('hotkeyDisplay');
     this.recordHotkeyBtn = document.getElementById('recordHotkey');
     this.clearHotkeyBtn = document.getElementById('clearHotkey');
@@ -59,6 +60,7 @@ class SettingsManager {
   populateFields(config) {
     this.serverUrlInput.value = config.serverUrl || '';
     this.authTokenInput.value = config.authToken || '';
+    this.wakeWordEnabledCheckbox.checked = config.wakeWordEnabled !== false;
     
     if (config.hotkey) {
       this.currentHotkey = config.hotkey;
@@ -218,7 +220,8 @@ class SettingsManager {
       hotkey: this.currentHotkey,
       replayHotkey: this.currentReplayHotkey,
       transcriptHotkey: this.currentTranscriptHotkey,
-      hotkeyMode: hotkeyMode
+      hotkeyMode: hotkeyMode,
+      wakeWordEnabled: this.wakeWordEnabledCheckbox.checked
     };
     
     try {

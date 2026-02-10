@@ -233,6 +233,23 @@
       color: rgba(255,255,255,0.4);
       margin-top: 6px;
     }
+
+    /* Toggle checkbox */
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      color: rgba(255,255,255,0.8);
+    }
+
+    .toggle-label input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #8b5cf6;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -256,7 +273,19 @@
   </div>
 
   <div class="section">
-    <div class="section-title">Hotkey</div>
+    <div class="section-title">Wake Word</div>
+    
+    <div class="field">
+      <label class="toggle-label">
+        <input type="checkbox" id="wakeWordEnabled" checked>
+        <span>Enable wake word detection</span>
+      </label>
+      <p class="description">When disabled, only the hotkey can activate listening. Useful if you're getting false positives.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Hotkeys</div>
     
     <div class="field">
       <label>Activation Hotkey</label>

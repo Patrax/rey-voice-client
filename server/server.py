@@ -77,6 +77,7 @@ class VoiceSession:
         self.whisper_model = None
         self.tts_voice = None
         self.wake_word_cooldown = False
+        self.wake_word_enabled = True  # Can be disabled by client
         # Session management for conversation continuity
         self.session_id = str(uuid.uuid4())
         self.conversation_history = []
@@ -323,7 +324,8 @@ class VoiceSession:
         audio_chunk = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
         if self.state == State.WAITING_FOR_WAKE_WORD:
-            if not self.wake_word_cooldown and self.process_wake_word(audio_chunk):
+            # Only check wake word if enabled
+            if self.wake_word_enabled and not self.wake_word_cooldown and self.process_wake_word(audio_chunk):
                 # Reset wake word model to clear internal buffers
                 self.oww_model.reset()
                 await self.send_state(State.LISTENING, "I'm listening...")
@@ -464,6 +466,11 @@ async def voice_endpoint(websocket: WebSocket):
                 msg = json.loads(data["text"])
                 if msg.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
+                elif msg.get("type") == "config":
+                    # Client sending configuration
+                    if "wakeWordEnabled" in msg:
+                        session.wake_word_enabled = msg["wakeWordEnabled"]
+                        logger.info(f"Wake word {'enabled' if session.wake_word_enabled else 'disabled'}")
                 elif msg.get("type") == "push_to_talk":
                     # Push to talk: immediately start listening (bypass wake word)
                     if session.state == State.WAITING_FOR_WAKE_WORD:

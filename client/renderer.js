@@ -46,6 +46,7 @@ class ReyVoiceClient {
     const config = await window.electronAPI.getConfig();
     this.serverUrl = config.serverUrl;
     this.authToken = config.authToken || '';
+    this.wakeWordEnabled = config.wakeWordEnabled !== false; // default true
     
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
@@ -170,6 +171,12 @@ class ReyVoiceClient {
         this.statusText.textContent = 'Connected';
         this.reconnectAttempts = 0;
         this.hideError();
+        
+        // Send wake word preference to server
+        this.socket.send(JSON.stringify({ 
+          type: 'config', 
+          wakeWordEnabled: this.wakeWordEnabled 
+        }));
         
         // Start keepalive pings every 30 seconds
         this.startKeepalive();
