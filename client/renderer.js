@@ -76,6 +76,9 @@ class ReyVoiceClient {
     // Set initial expression
     this.setExpression('neutral');
     
+    // Enable copy in transcript panel
+    this.setupTranscriptCopy();
+    
     // Connect first, then start audio
     this.connect();
     setTimeout(() => this.setupAudio(), 500);
@@ -457,6 +460,38 @@ class ReyVoiceClient {
       // Collapsing to compact character view
       window.electronAPI.resizeWindow('compact');
     }
+  }
+
+  setupTranscriptCopy() {
+    // Global Cmd/Ctrl+C handler (Electron doesn't provide this by default)
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+        const selection = window.getSelection().toString();
+        if (selection) {
+          navigator.clipboard.writeText(selection).then(() => {
+            console.log('Copied to clipboard');
+          }).catch(err => {
+            console.error('Copy failed:', err);
+          });
+        }
+      }
+    });
+    
+    // Right-click shows "Copied!" feedback
+    this.transcriptPanel.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const selection = window.getSelection().toString();
+      if (selection) {
+        navigator.clipboard.writeText(selection).then(() => {
+          // Brief visual feedback
+          const feedback = document.createElement('div');
+          feedback.textContent = 'Copied!';
+          feedback.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#333;color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;z-index:9999;';
+          document.body.appendChild(feedback);
+          setTimeout(() => feedback.remove(), 800);
+        });
+      }
+    });
   }
 
   loadTranscript() {
