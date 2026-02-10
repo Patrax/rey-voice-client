@@ -76,6 +76,37 @@
       letter-spacing: 1px;
     }
 
+    .window-controls {
+      display: flex;
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+
+    .window-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.5);
+    }
+
+    .window-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: white;
+    }
+
+    .window-btn.close:hover {
+      background: rgba(239, 68, 68, 0.8);
+      color: white;
+    }
+
     .dot {
       width: 8px;
       height: 8px;
@@ -529,6 +560,10 @@
       <div class="connection">
         <div class="dot" id="connection-dot"></div>
         <span id="status">Connecting...</span>
+      </div>
+      <div class="window-controls">
+        <button class="window-btn" id="settingsBtn" title="Settings">⚙</button>
+        <button class="window-btn close" id="hideBtn" title="Hide">✕</button>
       </div>
     </div>
 

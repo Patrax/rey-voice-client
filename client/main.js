@@ -286,3 +286,13 @@ ipcMain.on('close-settings', () => {
     settingsWindow.close();
   }
 });
+
+ipcMain.on('hide-window', () => {
+  if (mainWindow) {
+    mainWindow.hide();
+  }
+});
+
+ipcMain.on('open-settings', () => {
+  createSettingsWindow();
+});

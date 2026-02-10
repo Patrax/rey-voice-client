@@ -24,6 +24,8 @@ class ReyVoiceClient {
     this.errorDiv = document.getElementById('error');
     this.character = document.getElementById('character');
     this.currentExpression = 'neutral';
+    this.hideBtn = document.getElementById('hideBtn');
+    this.settingsBtn = document.getElementById('settingsBtn');
     
     this.init();
   }
@@ -40,6 +42,14 @@ class ReyVoiceClient {
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
     window.electronAPI.onPushToWake(() => this.handlePushToWake());
+    
+    // Window control buttons
+    if (this.hideBtn) {
+      this.hideBtn.addEventListener('click', () => window.electronAPI.hideWindow());
+    }
+    if (this.settingsBtn) {
+      this.settingsBtn.addEventListener('click', () => window.electronAPI.openSettings());
+    }
     
     // Set initial expression
     this.setExpression('neutral');

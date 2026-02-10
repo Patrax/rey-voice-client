@@ -4,5 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: () => ipcRenderer.invoke('get-config'),
   onConfig: (callback) => ipcRenderer.on('config', (_, data) => callback(data)),
   onPushToTalk: (callback) => ipcRenderer.on('push-to-talk', () => callback()),
-  onPushToWake: (callback) => ipcRenderer.on('push-to-wake', () => callback())
+  onPushToWake: (callback) => ipcRenderer.on('push-to-wake', () => callback()),
+  hideWindow: () => ipcRenderer.send('hide-window'),
+  openSettings: () => ipcRenderer.send('open-settings')
 });
