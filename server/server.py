@@ -26,7 +26,8 @@ from typing import Optional
 import httpx
 import numpy as np
 import soundfile as sf
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 import config
@@ -447,6 +448,7 @@ async def voice_endpoint(websocket: WebSocket):
     logger.info(f"Client connected from {websocket.client.host}")
     
     session = VoiceSession(websocket)
+    connected_sessions.append(session)
     
     try:
         await session.initialize()
@@ -496,11 +498,90 @@ async def voice_endpoint(websocket: WebSocket):
         logger.info("Client disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
+    finally:
+        if session in connected_sessions:
+            connected_sessions.remove(session)
+        logger.info(f"Active clients: {len(connected_sessions)}")
+
+
+# Track connected clients for broadcasting
+connected_sessions: list[VoiceSession] = []
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "clients": len(connected_sessions)}
+
+
+class InboxMessage(BaseModel):
+    """Incoming message from external service."""
+    message: str
+    priority: str = "normal"  # normal, urgent
+    speak: bool = True  # Whether to speak via TTS
+    title: str = None  # Optional title/source
+
+
+@app.post("/inbox")
+async def inbox(msg: InboxMessage, authorization: str = Header(None)):
+    """
+    Receive messages from external services and broadcast to connected clients.
+    
+    POST /inbox
+    Headers:
+      Authorization: Bearer <token>
+    Body:
+      {
+        "message": "You have a visitor at the front door",
+        "title": "Home Security",  // optional
+        "priority": "normal",      // normal or urgent
+        "speak": true              // speak via TTS
+      }
+    """
+    # Auth check
+    if config.AUTH_TOKEN:
+        if not authorization or not authorization.startswith("Bearer "):
+            return {"error": "Unauthorized"}, 401
+        token = authorization.replace("Bearer ", "")
+        if token != config.AUTH_TOKEN:
+            return {"error": "Unauthorized"}, 401
+    
+    if not connected_sessions:
+        logger.warning(f"Inbox message received but no clients connected: {msg.message[:50]}")
+        return {"status": "queued", "clients": 0, "note": "No clients connected"}
+    
+    logger.info(f"Inbox message from {msg.title or 'unknown'}: {msg.message[:50]}...")
+    
+    # Format the announcement
+    announcement = msg.message
+    if msg.title:
+        announcement = f"{msg.title}: {msg.message}"
+    
+    # Broadcast to all connected clients
+    delivered = 0
+    for session in connected_sessions:
+        try:
+            # Send text notification
+            await session.websocket.send_json({
+                "type": "notification",
+                "title": msg.title,
+                "message": msg.message,
+                "priority": msg.priority,
+                "speak": msg.speak
+            })
+            
+            # If speak is enabled and client is idle, synthesize and send audio
+            if msg.speak and session.state == State.WAITING_FOR_WAKE_WORD:
+                audio = await session.synthesize_speech(announcement)
+                if audio:
+                    await session.send_state(State.SPEAKING, announcement[:50] + "...")
+                    await session.send_audio(audio)
+                    await session.send_state(State.WAITING_FOR_WAKE_WORD)
+            
+            delivered += 1
+        except Exception as e:
+            logger.error(f"Failed to deliver to client: {e}")
+    
+    return {"status": "delivered", "clients": delivered}
 
 
 if __name__ == "__main__":

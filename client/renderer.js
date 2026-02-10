@@ -243,6 +243,16 @@ class ReyVoiceClient {
       case 'error':
         this.showError(data.message);
         break;
+      case 'notification':
+        // Incoming notification from inbox
+        console.log('Notification:', data);
+        this.message.textContent = data.message.substring(0, 80) + (data.message.length > 80 ? '...' : '');
+        if (data.priority === 'urgent') {
+          this.setExpression('surprised');
+        } else {
+          this.setExpression('happy');
+        }
+        break;
       case 'keepalive':
         // Ignore keepalive messages
         break;
