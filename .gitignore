@@ -36,3 +36,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Client config (contains auth token)
+client/config.json

@@ -1,12 +1,24 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage } = require('electron');
 const path = require('path');
+const fs = require('fs');
+
+// Load config from file if exists
+let fileConfig = {};
+const configPath = path.join(__dirname, 'config.json');
+if (fs.existsSync(configPath)) {
+  try {
+    fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (e) {
+    console.error('Failed to load config.json:', e);
+  }
+}
 
 let mainWindow = null;
 let tray = null;
 
-// Server configuration - default to production Cloudflare tunnel
-const SERVER_URL = process.env.REY_SERVER_URL || 'wss://rey.patriciojeri.com/voice';
-const AUTH_TOKEN = process.env.REY_AUTH_TOKEN || '';
+// Server configuration - env vars override config file
+const SERVER_URL = process.env.REY_SERVER_URL || fileConfig.serverUrl || 'wss://rey.patriciojeri.com/voice';
+const AUTH_TOKEN = process.env.REY_AUTH_TOKEN || fileConfig.authToken || '';
 
 function createWindow() {
   mainWindow = new BrowserWindow({

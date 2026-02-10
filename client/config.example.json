@@ -1,0 +1,4 @@
+{
+  "serverUrl": "wss://your-server.com/voice",
+  "authToken": "your_auth_token_here"
+}
