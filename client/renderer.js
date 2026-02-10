@@ -383,23 +383,27 @@ class ReyVoiceClient {
       // Lock into speaking state
       this.isPlayingAudio = true;
       this.setState('speaking', 'Speaking...');
+      this.updateReplayButton();
       
       audio.onended = () => {
         URL.revokeObjectURL(url);
         this.isPlayingAudio = false;
         this.setState('waiting', "Ready");
+        this.updateReplayButton();
       };
       
       audio.onerror = (err) => {
         console.error('Audio playback error:', err);
         URL.revokeObjectURL(url);
         this.isPlayingAudio = false;
+        this.updateReplayButton();
       };
       
       await audio.play();
     } catch (err) {
       console.error('Audio playback error:', err);
       this.isPlayingAudio = false;
+      this.updateReplayButton();
     }
   }
 
@@ -487,7 +491,18 @@ class ReyVoiceClient {
     this.transcriptPanel.scrollTop = this.transcriptPanel.scrollHeight;
   }
 
+  updateReplayButton() {
+    if (this.replayBtn) {
+      this.replayBtn.disabled = this.isPlayingAudio;
+      this.replayBtn.style.opacity = this.isPlayingAudio ? '0.3' : '1';
+      this.replayBtn.style.cursor = this.isPlayingAudio ? 'not-allowed' : 'pointer';
+    }
+  }
+
   replayLastMessage() {
+    // Don't replay while audio is already playing
+    if (this.isPlayingAudio) return;
+    
     if (this.lastAudio) {
       // Replay stored audio
       this.playAudio(this.lastAudio);
