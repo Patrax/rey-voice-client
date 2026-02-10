@@ -31,8 +31,8 @@ class ReyVoiceClient {
     this.replayBtn = document.getElementById('replayBtn');
     this.transcriptPanel = document.getElementById('transcriptPanel');
     
-    // Transcript history
-    this.transcript = [];
+    // Transcript history (load from localStorage)
+    this.transcript = this.loadTranscript();
     this.lastResponse = null;
     this.lastAudio = null;
     
@@ -459,6 +459,26 @@ class ReyVoiceClient {
     }
   }
 
+  loadTranscript() {
+    try {
+      const saved = localStorage.getItem('rey-transcript');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (err) {
+      console.error('Failed to load transcript:', err);
+    }
+    return [];
+  }
+
+  saveTranscript() {
+    try {
+      localStorage.setItem('rey-transcript', JSON.stringify(this.transcript));
+    } catch (err) {
+      console.error('Failed to save transcript:', err);
+    }
+  }
+
   addToTranscript(role, text) {
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     this.transcript.push({ role, text, timestamp });
@@ -467,6 +487,9 @@ class ReyVoiceClient {
     if (this.transcript.length > 50) {
       this.transcript.shift();
     }
+    
+    // Persist to localStorage
+    this.saveTranscript();
     
     // Update display if visible
     if (this.transcriptPanel.classList.contains('show')) {

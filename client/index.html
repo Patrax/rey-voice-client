@@ -111,6 +111,10 @@
       z-index: 20;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(0, 0, 0, 0.1);
+      -webkit-app-region: no-drag;
+      user-select: text;
+      -webkit-user-select: text;
+      cursor: text;
     }
 
     .transcript-panel.show {
@@ -123,6 +127,8 @@
       font-size: 13px;
       line-height: 1.4;
       max-width: 90%;
+      user-select: text;
+      -webkit-user-select: text;
     }
 
     .transcript-entry.user {
