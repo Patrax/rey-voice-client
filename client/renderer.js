@@ -67,8 +67,9 @@ class ReyVoiceClient {
       this.replayBtn.addEventListener('click', () => this.replayLastMessage());
     }
     
-    // Replay hotkey from main process
+    // Hotkeys from main process
     window.electronAPI.onReplayLastMessage(() => this.replayLastMessage());
+    window.electronAPI.onToggleTranscript(() => this.toggleTranscript());
     
     // Set initial expression
     this.setExpression('neutral');

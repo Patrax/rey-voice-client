@@ -15,14 +15,18 @@ class SettingsManager {
     this.replayHotkeyDisplay = document.getElementById('replayHotkeyDisplay');
     this.recordReplayHotkeyBtn = document.getElementById('recordReplayHotkey');
     this.clearReplayHotkeyBtn = document.getElementById('clearReplayHotkey');
+    this.transcriptHotkeyDisplay = document.getElementById('transcriptHotkeyDisplay');
+    this.recordTranscriptHotkeyBtn = document.getElementById('recordTranscriptHotkey');
+    this.clearTranscriptHotkeyBtn = document.getElementById('clearTranscriptHotkey');
     this.saveBtn = document.getElementById('saveBtn');
     this.cancelBtn = document.getElementById('cancelBtn');
     this.statusMessage = document.getElementById('statusMessage');
     
     this.isRecordingHotkey = false;
-    this.recordingTarget = null; // 'main' or 'replay'
+    this.recordingTarget = null; // 'main', 'replay', or 'transcript'
     this.currentHotkey = '';
     this.currentReplayHotkey = '';
+    this.currentTranscriptHotkey = '';
     
     this.init();
   }
@@ -38,6 +42,8 @@ class SettingsManager {
     this.clearHotkeyBtn.addEventListener('click', () => this.clearHotkey('main'));
     this.recordReplayHotkeyBtn.addEventListener('click', () => this.startHotkeyRecording('replay'));
     this.clearReplayHotkeyBtn.addEventListener('click', () => this.clearHotkey('replay'));
+    this.recordTranscriptHotkeyBtn.addEventListener('click', () => this.startHotkeyRecording('transcript'));
+    this.clearTranscriptHotkeyBtn.addEventListener('click', () => this.clearHotkey('transcript'));
     this.saveBtn.addEventListener('click', () => this.saveSettings());
     this.cancelBtn.addEventListener('click', () => window.settingsAPI.closeSettings());
     
@@ -64,6 +70,11 @@ class SettingsManager {
       this.updateHotkeyDisplay(config.replayHotkey, 'replay');
     }
     
+    if (config.transcriptHotkey) {
+      this.currentTranscriptHotkey = config.transcriptHotkey;
+      this.updateHotkeyDisplay(config.transcriptHotkey, 'transcript');
+    }
+    
     if (config.hotkeyMode) {
       const radio = document.querySelector(`input[name="hotkeyMode"][value="${config.hotkeyMode}"]`);
       if (radio) radio.checked = true;
@@ -76,12 +87,20 @@ class SettingsManager {
     this.toggleTokenBtn.textContent = isPassword ? '🔒' : '👁';
   }
 
+  getHotkeyElements(target) {
+    if (target === 'replay') {
+      return { display: this.replayHotkeyDisplay, btn: this.recordReplayHotkeyBtn };
+    } else if (target === 'transcript') {
+      return { display: this.transcriptHotkeyDisplay, btn: this.recordTranscriptHotkeyBtn };
+    }
+    return { display: this.hotkeyDisplay, btn: this.recordHotkeyBtn };
+  }
+
   startHotkeyRecording(target) {
     this.isRecordingHotkey = true;
     this.recordingTarget = target;
     
-    const display = target === 'replay' ? this.replayHotkeyDisplay : this.hotkeyDisplay;
-    const btn = target === 'replay' ? this.recordReplayHotkeyBtn : this.recordHotkeyBtn;
+    const { display, btn } = this.getHotkeyElements(target);
     
     display.classList.add('recording');
     display.innerHTML = '<span class="placeholder">Press any key combination...</span>';
@@ -95,9 +114,9 @@ class SettingsManager {
   cancelHotkeyRecording(target) {
     this.isRecordingHotkey = false;
     
-    const display = target === 'replay' ? this.replayHotkeyDisplay : this.hotkeyDisplay;
-    const btn = target === 'replay' ? this.recordReplayHotkeyBtn : this.recordHotkeyBtn;
-    const currentKey = target === 'replay' ? this.currentReplayHotkey : this.currentHotkey;
+    const { display, btn } = this.getHotkeyElements(target);
+    const currentKey = target === 'replay' ? this.currentReplayHotkey : 
+                       target === 'transcript' ? this.currentTranscriptHotkey : this.currentHotkey;
     
     display.classList.remove('recording');
     this.updateHotkeyDisplay(currentKey, target);
@@ -146,11 +165,12 @@ class SettingsManager {
     const target = this.recordingTarget || 'main';
     this.isRecordingHotkey = false;
     
-    const display = target === 'replay' ? this.replayHotkeyDisplay : this.hotkeyDisplay;
-    const btn = target === 'replay' ? this.recordReplayHotkeyBtn : this.recordHotkeyBtn;
+    const { display, btn } = this.getHotkeyElements(target);
     
     if (target === 'replay') {
       this.currentReplayHotkey = accelerator;
+    } else if (target === 'transcript') {
+      this.currentTranscriptHotkey = accelerator;
     } else {
       this.currentHotkey = accelerator;
     }
@@ -163,7 +183,7 @@ class SettingsManager {
   }
 
   updateHotkeyDisplay(hotkey, target = 'main') {
-    const display = target === 'replay' ? this.replayHotkeyDisplay : this.hotkeyDisplay;
+    const { display } = this.getHotkeyElements(target);
     
     if (hotkey) {
       // Make it look nice
@@ -181,6 +201,8 @@ class SettingsManager {
   clearHotkey(target = 'main') {
     if (target === 'replay') {
       this.currentReplayHotkey = '';
+    } else if (target === 'transcript') {
+      this.currentTranscriptHotkey = '';
     } else {
       this.currentHotkey = '';
     }
@@ -195,6 +217,7 @@ class SettingsManager {
       authToken: this.authTokenInput.value.trim(),
       hotkey: this.currentHotkey,
       replayHotkey: this.currentReplayHotkey,
+      transcriptHotkey: this.currentTranscriptHotkey,
       hotkeyMode: hotkeyMode
     };
     

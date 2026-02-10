@@ -12,7 +12,8 @@ function loadConfig() {
     authToken: '',
     hotkey: 'CommandOrControl+Shift+R',
     hotkeyMode: 'push_to_talk',
-    replayHotkey: ''
+    replayHotkey: '',
+    transcriptHotkey: ''
   };
   
   if (fs.existsSync(configPath)) {
@@ -208,6 +209,23 @@ function registerShortcuts() {
       }
     } catch (err) {
       console.error('Invalid replay hotkey:', config.replayHotkey, err);
+    }
+  }
+  
+  // Toggle transcript hotkey
+  if (config.transcriptHotkey) {
+    try {
+      const registered = globalShortcut.register(config.transcriptHotkey, () => {
+        if (mainWindow) {
+          mainWindow.webContents.send('toggle-transcript');
+          mainWindow.show();
+        }
+      });
+      if (registered) {
+        console.log('Registered transcript hotkey:', config.transcriptHotkey);
+      }
+    } catch (err) {
+      console.error('Invalid transcript hotkey:', config.transcriptHotkey, err);
     }
   }
 }

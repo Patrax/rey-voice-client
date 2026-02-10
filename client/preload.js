@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: () => ipcRenderer.send('hide-window'),
   openSettings: () => ipcRenderer.send('open-settings'),
   listeningStopped: () => ipcRenderer.send('listening-stopped'),
-  onReplayLastMessage: (callback) => ipcRenderer.on('replay-last-message', () => callback())
+  onReplayLastMessage: (callback) => ipcRenderer.on('replay-last-message', () => callback()),
+  onToggleTranscript: (callback) => ipcRenderer.on('toggle-transcript', () => callback())
 });
