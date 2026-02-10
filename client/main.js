@@ -47,7 +47,7 @@ let tray = null;
 
 function createWindow() {
   // Start in compact mode (character only)
-  const initialSize = { width: 220, height: 240 };
+  const initialSize = { width: 200, height: 220 };
   
   mainWindow = new BrowserWindow({
     width: initialSize.width,
@@ -94,7 +94,7 @@ function createWindow() {
   const { screen } = require('electron');
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
-  mainWindow.setPosition(width - initialSize.width - 20, height - initialSize.height);
+  mainWindow.setPosition(width - initialSize.width - 20, height - initialSize.height + 20);
 }
 
 function createSettingsWindow() {
@@ -382,7 +382,7 @@ ipcMain.on('open-settings', () => {
 
 // Window resizing for compact/expanded modes
 const WINDOW_SIZES = {
-  compact: { width: 220, height: 240 },
+  compact: { width: 200, height: 220 },
   expanded: { width: 400, height: 450 }
 };
 
