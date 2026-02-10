@@ -52,12 +52,18 @@ function createWindow() {
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
+    visibleOnAllWorkspaces: true,  // Follow across macOS Spaces
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     }
   });
+  
+  // macOS: ensure it stays on all spaces even after hide/show
+  if (process.platform === 'darwin') {
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
 
   mainWindow.loadFile('index.html');
   
