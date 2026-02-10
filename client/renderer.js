@@ -39,6 +39,7 @@ class ReyVoiceClient {
     
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
+    window.electronAPI.onPushToWake(() => this.handlePushToWake());
     
     // Set initial expression
     this.setExpression('neutral');
@@ -241,7 +242,7 @@ class ReyVoiceClient {
     } else {
       switch (state) {
         case 'waiting':
-          this.message.textContent = "Say 'Hey Jarvis'!";
+          this.message.textContent = "Ready";
           this.statusText.textContent = 'READY';
           this.setExpression('neutral');
           break;
@@ -312,7 +313,7 @@ class ReyVoiceClient {
       audio.onended = () => {
         URL.revokeObjectURL(url);
         this.isPlayingAudio = false;
-        this.setState('waiting', "Say 'Hey Jarvis' to start");
+        this.setState('waiting', "Ready");
       };
       
       audio.onerror = (err) => {
@@ -332,6 +333,14 @@ class ReyVoiceClient {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
     
     this.socket.send(JSON.stringify({ type: 'push_to_talk' }));
+  }
+
+  handlePushToWake() {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    
+    // Push to wake triggers the wake word detection flow
+    // (as if the user said the wake word)
+    this.socket.send(JSON.stringify({ type: 'push_to_wake' }));
   }
 
   showError(message) {

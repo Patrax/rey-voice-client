@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Rey Settings</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: white;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      color: #8b5cf6;
+    }
+
+    .section {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 12px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: rgba(255,255,255,0.8);
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      color: white;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      outline: none;
+      border-color: #8b5cf6;
+      background: rgba(255,255,255,0.15);
+    }
+
+    .input-group {
+      position: relative;
+    }
+
+    .input-group input {
+      padding-right: 40px;
+    }
+
+    .toggle-visibility {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.5);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px;
+    }
+
+    .toggle-visibility:hover {
+      color: white;
+    }
+
+    /* Hotkey capture */
+    .hotkey-input {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .hotkey-display {
+      flex: 1;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      font-size: 14px;
+      color: white;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+    }
+
+    .hotkey-display.recording {
+      border-color: #8b5cf6;
+      animation: pulse-border 1s ease infinite alternate;
+    }
+
+    @keyframes pulse-border {
+      from { border-color: #8b5cf6; }
+      to { border-color: #a78bfa; }
+    }
+
+    .hotkey-display .placeholder {
+      color: rgba(255,255,255,0.4);
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .btn-primary {
+      background: #8b5cf6;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #7c3aed;
+    }
+
+    .btn-clear {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+    }
+
+    .btn-clear:hover {
+      background: rgba(239, 68, 68, 0.3);
+    }
+
+    /* Radio options */
+    .radio-group {
+      display: flex;
+      gap: 16px;
+      margin-top: 8px;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .radio-option input[type="radio"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #8b5cf6;
+    }
+
+    .radio-option span {
+      font-size: 14px;
+      color: rgba(255,255,255,0.8);
+    }
+
+    /* Actions */
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+
+    /* Status message */
+    .status-message {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      right: 24px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s;
+    }
+
+    .status-message.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .status-message.success {
+      background: rgba(34, 197, 94, 0.2);
+      color: #4ade80;
+    }
+
+    .status-message.error {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+    }
+
+    /* Description text */
+    .description {
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚙️ Settings</h1>
+
+  <div class="section">
+    <div class="section-title">Connection</div>
+    
+    <div class="field">
+      <label for="serverUrl">Server URL</label>
+      <input type="text" id="serverUrl" placeholder="wss://rey.patriciojeri.com/voice">
+    </div>
+
+    <div class="field">
+      <label for="authToken">Auth Token</label>
+      <div class="input-group">
+        <input type="password" id="authToken" placeholder="Enter your auth token">
+        <button class="toggle-visibility" id="toggleToken" title="Show/hide token">👁</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Hotkey</div>
+    
+    <div class="field">
+      <label>Activation Hotkey</label>
+      <div class="hotkey-input">
+        <div class="hotkey-display" id="hotkeyDisplay">
+          <span class="placeholder">No hotkey set</span>
+        </div>
+        <button class="btn btn-secondary" id="recordHotkey">Record</button>
+        <button class="btn btn-clear" id="clearHotkey">Clear</button>
+      </div>
+      <p class="description">Press "Record" then press your desired key combination (e.g., F19, Ctrl+Shift+R)</p>
+    </div>
+
+    <div class="field">
+      <label>Hotkey Mode</label>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" name="hotkeyMode" value="push_to_talk" checked>
+          <span>Push to Talk</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="hotkeyMode" value="push_to_wake">
+          <span>Push to Wake</span>
+        </label>
+      </div>
+      <p class="description">
+        <strong>Push to Talk:</strong> Immediately start listening (bypasses wake word)<br>
+        <strong>Push to Wake:</strong> Trigger wake word detection (as if you said the wake word)
+      </p>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
+    <button class="btn btn-primary" id="saveBtn">Save Settings</button>
+  </div>
+
+  <div class="status-message" id="statusMessage"></div>
+
+  <script src="settings-renderer.js"></script>
+</body>
+</html>

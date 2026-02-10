@@ -450,7 +450,7 @@ async def voice_endpoint(websocket: WebSocket):
     
     try:
         await session.initialize()
-        await session.send_state(State.WAITING_FOR_WAKE_WORD, "Say 'Hey Jarvis' to start")
+        await session.send_state(State.WAITING_FOR_WAKE_WORD, "Ready")
         
         while True:
             data = await websocket.receive()
@@ -463,12 +463,22 @@ async def voice_endpoint(websocket: WebSocket):
                 if msg.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
                 elif msg.get("type") == "push_to_talk":
+                    # Push to talk: immediately start listening (bypass wake word)
                     if session.state == State.WAITING_FOR_WAKE_WORD:
                         await session.send_state(State.LISTENING, "I'm listening...")
                         session.audio_buffer = []
                         session.silence_frames = 0
                     elif session.state == State.LISTENING:
+                        # Already listening - process what we have
                         await session.process_speech()
+                elif msg.get("type") == "push_to_wake":
+                    # Push to wake: same as detecting wake word (trigger listening mode)
+                    if session.state == State.WAITING_FOR_WAKE_WORD:
+                        logger.info("Push to wake triggered")
+                        session.oww_model.reset()
+                        await session.send_state(State.LISTENING, "I'm listening...")
+                        session.audio_buffer = []
+                        session.silence_frames = 0
                         
     except WebSocketDisconnect:
         logger.info("Client disconnected")

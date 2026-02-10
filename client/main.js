@@ -2,28 +2,49 @@ const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage } =
 const path = require('path');
 const fs = require('fs');
 
-// Load config from file if exists
-let fileConfig = {};
+// Config file path
 const configPath = path.join(__dirname, 'config.json');
-if (fs.existsSync(configPath)) {
+
+// Load config from file
+function loadConfig() {
+  const defaults = {
+    serverUrl: 'wss://rey.patriciojeri.com/voice',
+    authToken: '',
+    hotkey: 'CommandOrControl+Shift+R',
+    hotkeyMode: 'push_to_talk'
+  };
+  
+  if (fs.existsSync(configPath)) {
+    try {
+      const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return { ...defaults, ...fileConfig };
+    } catch (e) {
+      console.error('Failed to load config.json:', e);
+    }
+  }
+  return defaults;
+}
+
+// Save config to file
+function saveConfig(config) {
   try {
-    fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    return true;
   } catch (e) {
-    console.error('Failed to load config.json:', e);
+    console.error('Failed to save config.json:', e);
+    return false;
   }
 }
 
+let config = loadConfig();
 let mainWindow = null;
+let settingsWindow = null;
 let tray = null;
-
-// Server configuration - env vars override config file
-const SERVER_URL = process.env.REY_SERVER_URL || fileConfig.serverUrl || 'wss://rey.patriciojeri.com/voice';
-const AUTH_TOKEN = process.env.REY_AUTH_TOKEN || fileConfig.authToken || '';
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 400,
-    height: 300,
+    height: 350,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -60,24 +81,51 @@ function createWindow() {
   const { screen } = require('electron');
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
-  mainWindow.setPosition(width - 420, height - 320);
+  mainWindow.setPosition(width - 420, height - 370);
+}
+
+function createSettingsWindow() {
+  if (settingsWindow) {
+    settingsWindow.focus();
+    return;
+  }
+
+  settingsWindow = new BrowserWindow({
+    width: 480,
+    height: 520,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'settings-preload.js')
+    }
+  });
+
+  settingsWindow.loadFile('settings.html');
+  settingsWindow.setMenu(null);
+
+  settingsWindow.on('closed', () => {
+    settingsWindow = null;
+  });
 }
 
 function createTray() {
-  // Create a simple tray icon (🦞 lobster emoji as placeholder)
+  // Create a simple tray icon
   const icon = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAA7AAAAOwBeShxvQAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAKoSURBVFiF7ZdNaBNBFMd/s5tsNjFJk9aksdVqi4iCIl4EwYMiXgQvnrzpQfDkxYsH8ebNkyAIgnhRPHj0IIIgngQ/QKRYrYq2tm6apslukt1kdz0k2yZNG1MLHvzDsLOz7/3fezM7M6v8N0klf8qNqlTpPBFa9gYBoB7AdxAENIAAKCJCTdMwTZNyuUwymaS3t5dAIEBraytjY2PcvXuXeDxOc3MzhUIBgEAgQCqVwjRNrl27RmtrK4qi8OHDB7q6ulBVlZs3bzI0NMT58+fp6+tj48aNbN68mWg0SmdnJx0dHRw5coT+/n6i0SjLli0jmUxy6NAhBgcHCYfDLC4u8v79e5YtW4aqqkteoISLTucBD3A7m2FxcZHZ2Vl0XWdoaAhd10mn01itVmKxGK2trbS0tBAKhYjFYrS3txMIBHjy5AlHjx5F13W6u7sJBoO4XC4AmpubKZVKaJpGPp/H7Xbz7ds3XC4X8/PzXL9+na9fv6KqKmNjY6iqyldfn1fJZsukUnkA3G43wWCQbDbLzp07KZfLFAoFnj59itvtJpfLEQgESKfTpFIpCoUC8XicQqHA4OAghUKBVCpFoVDA7/dTLBY5duwYsViMtrY2ampqyGQyxONxVFXl0qVLfP78mUgkgtfr5fnz52iaRigUIplMEolEOHDgAKdPn+bbt29LNkjWNA0ASinsdjtGOU+ydJV0tgLAyMgIiqJQU1NDKpWira0NSikymQzT09O43W6SySSGYeDz+QCIx+Pk83laWloYHBzE4XBgGAaqqpLNZsnn86TTacrlcrUDDENHBdnpUqLF74+Rm1vA7nBQKpVwuVw4nU48Hg9er5dwOIyu62iaRnt7Oz6fj/r6ehRFoa6uDqfTiaZpNDY2YrFYcLvdTE1N4XK5/lkH/I/fAP4R/ATnZsB/EQ9/mwAAAABJRU5ErkJggg=='
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAA7AAAAOwBeShxvQAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAKoSURBVFiF7ZdNaBNBFMd/s5tsNjFJk9aksdVqi4iCIl4EwYMiXgQvnrzpQfDkxYsH8ebNkyAIgnhRPHj0IIIgngQ/QKRYrYq2tm6apslukt1kdz0k2yZNG1MLHvzDsLOz7/3fezM7M6v8N0klf8qNqlTpPBFa9gYBoB7AdxAENIAAKCJCTdMwTZNyuUwymaS3t5dAIEBraytjY2PcvXuXeDxOc3MzhUIBgEAgQCqVwjRNrl27RmtrK4qi8OHDB7q6ulBVlZs3bzI0NMT58+fp6+tj48aNbN68mWg0SmdnJx0dHRw5coT+/n6i0SjLli0jmUxy6NAhBgcHCYfDLC4u8v79e5YtW4aqqkteoISLTucBD3A7m2FxcZHZ2Vl0XWdoaAhd10mn01itVmKxGK2trbS0tBAKhYjFYrS3txMIBHjy5AlHjx5F13W6u7sJBoO4XC4AmpubKZVKaJpGPp/H7Xbz7ds3XC4X8/PzXL9+na9fv6KqKmNjY6iqyldfn1fJZsukUnkA3G43wWCQbDbLzp07KZfLFAoFnj59itvtJpfLEQgESKfTpFIpCoUC8XicQqHA4OAghUKBVCpFoVDA7/dTLBY5duwYsViMtrY2ampqyGQyxONxVFXl0qVLfP78mUgkgtfr5fnz52iaRigUIplMEolEOHDgAKdPn+bbt29LNkjWNA0ASinsdjtGOU+ydJV0tgLAyMgIiqJQU1NDKpWira0NSikymQzT09O43W6SySSGYeDz+QCIx+Pk83taWloYHBzE4XBgGAaqqpLNZsnn86TTacrlcrUDDENHBdnpUqLF74+Rm1vA7nBQKpVwuVw4nU48Hg9er5dwOIyu62iaRnt7Oz6fj/r6ehRFoa6uDqfTiaZpNDY2YrFYcLvdTE1N4XK5/lkH/I/fAP4R/ATnZsB/EQ9/mwAAAABJRU5ErkJggg=='
   );
   
   tray = new Tray(icon);
   
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show Rey', click: () => mainWindow.show() },
-    { label: 'Push to Talk', accelerator: 'CommandOrControl+Shift+R', click: () => {
-      mainWindow.webContents.send('push-to-talk');
+    { label: 'Push to Talk', accelerator: config.hotkey || 'CommandOrControl+Shift+R', click: () => {
+      triggerHotkey();
     }},
     { type: 'separator' },
-    { label: 'Settings', click: () => { /* TODO */ }},
+    { label: 'Settings', click: () => createSettingsWindow() },
     { type: 'separator' },
     { label: 'Quit', click: () => {
       app.isQuitting = true;
@@ -93,12 +141,38 @@ function createTray() {
   });
 }
 
-function registerShortcuts() {
-  // Global push-to-talk shortcut
-  globalShortcut.register('CommandOrControl+Shift+R', () => {
+function triggerHotkey() {
+  if (!mainWindow) return;
+  
+  mainWindow.show();
+  
+  if (config.hotkeyMode === 'push_to_wake') {
+    mainWindow.webContents.send('push-to-wake');
+  } else {
     mainWindow.webContents.send('push-to-talk');
-    mainWindow.show();
-  });
+  }
+}
+
+function registerShortcuts() {
+  // Unregister all first
+  globalShortcut.unregisterAll();
+  
+  // Register custom hotkey if set
+  if (config.hotkey) {
+    try {
+      const registered = globalShortcut.register(config.hotkey, () => {
+        triggerHotkey();
+      });
+      
+      if (!registered) {
+        console.error('Failed to register hotkey:', config.hotkey);
+      } else {
+        console.log('Registered hotkey:', config.hotkey);
+      }
+    } catch (err) {
+      console.error('Invalid hotkey:', config.hotkey, err);
+    }
+  }
 }
 
 app.whenReady().then(() => {
@@ -106,9 +180,12 @@ app.whenReady().then(() => {
   createTray();
   registerShortcuts();
   
-  // Send server config to renderer
+  // Send config to renderer when ready
   mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.send('config', { serverUrl: SERVER_URL, authToken: AUTH_TOKEN });
+    mainWindow.webContents.send('config', { 
+      serverUrl: config.serverUrl, 
+      authToken: config.authToken 
+    });
   });
 });
 
@@ -128,7 +205,60 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
 
-// IPC handlers
+// IPC handlers for main window
 ipcMain.handle('get-config', () => {
-  return { serverUrl: SERVER_URL, authToken: AUTH_TOKEN };
+  return { 
+    serverUrl: config.serverUrl, 
+    authToken: config.authToken 
+  };
+});
+
+// IPC handlers for settings window
+ipcMain.handle('get-full-config', () => {
+  return config;
+});
+
+ipcMain.handle('save-config', (event, newConfig) => {
+  config = { ...config, ...newConfig };
+  const success = saveConfig(config);
+  
+  if (success) {
+    // Re-register shortcuts with new hotkey
+    registerShortcuts();
+    
+    // Update main window config
+    if (mainWindow) {
+      mainWindow.webContents.send('config', { 
+        serverUrl: config.serverUrl, 
+        authToken: config.authToken 
+      });
+    }
+    
+    // Rebuild tray menu with new accelerator
+    if (tray) {
+      const contextMenu = Menu.buildFromTemplate([
+        { label: 'Show Rey', click: () => mainWindow.show() },
+        { label: config.hotkeyMode === 'push_to_wake' ? 'Push to Wake' : 'Push to Talk', 
+          accelerator: config.hotkey || undefined, 
+          click: () => triggerHotkey() 
+        },
+        { type: 'separator' },
+        { label: 'Settings', click: () => createSettingsWindow() },
+        { type: 'separator' },
+        { label: 'Quit', click: () => {
+          app.isQuitting = true;
+          app.quit();
+        }}
+      ]);
+      tray.setContextMenu(contextMenu);
+    }
+  }
+  
+  return success;
+});
+
+ipcMain.on('close-settings', () => {
+  if (settingsWindow) {
+    settingsWindow.close();
+  }
 });
