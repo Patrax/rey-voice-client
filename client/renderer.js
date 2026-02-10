@@ -538,12 +538,29 @@ class ReyVoiceClient {
       return;
     }
     
-    this.transcriptPanel.innerHTML = this.transcript.map(entry => `
-      <div class="transcript-entry ${entry.role}">
-        <div>${entry.text}</div>
+    this.transcriptPanel.innerHTML = this.transcript.map((entry, i) => `
+      <div class="transcript-entry ${entry.role}" data-index="${i}">
+        <div class="transcript-text">${entry.text}</div>
         <div class="timestamp">${entry.timestamp}</div>
       </div>
     `).join('');
+    
+    // Click to copy
+    this.transcriptPanel.querySelectorAll('.transcript-entry').forEach(el => {
+      el.addEventListener('click', (e) => {
+        // Don't copy if user is selecting text
+        if (window.getSelection().toString()) return;
+        
+        const index = parseInt(el.dataset.index);
+        const text = this.transcript[index]?.text;
+        if (text) {
+          navigator.clipboard.writeText(text).then(() => {
+            el.style.opacity = '0.5';
+            setTimeout(() => el.style.opacity = '1', 200);
+          });
+        }
+      });
+    });
     
     // Scroll to bottom
     this.transcriptPanel.scrollTop = this.transcriptPanel.scrollHeight;
