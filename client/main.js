@@ -11,7 +11,8 @@ function loadConfig() {
     serverUrl: 'wss://rey.patriciojeri.com/voice',
     authToken: '',
     hotkey: 'CommandOrControl+Shift+R',
-    hotkeyMode: 'push_to_talk'
+    hotkeyMode: 'push_to_talk',
+    replayHotkey: ''
   };
   
   if (fs.existsSync(configPath)) {
@@ -192,6 +193,23 @@ function registerShortcuts() {
   globalShortcut.register('CommandOrControl+,', () => {
     createSettingsWindow();
   });
+  
+  // Replay last message hotkey
+  if (config.replayHotkey) {
+    try {
+      const registered = globalShortcut.register(config.replayHotkey, () => {
+        if (mainWindow) {
+          mainWindow.webContents.send('replay-last-message');
+          mainWindow.show();
+        }
+      });
+      if (registered) {
+        console.log('Registered replay hotkey:', config.replayHotkey);
+      }
+    } catch (err) {
+      console.error('Invalid replay hotkey:', config.replayHotkey, err);
+    }
+  }
 }
 
 app.whenReady().then(() => {

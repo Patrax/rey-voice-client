@@ -26,6 +26,14 @@ class ReyVoiceClient {
     this.currentExpression = 'neutral';
     this.hideBtn = document.getElementById('hideBtn');
     this.settingsBtn = document.getElementById('settingsBtn');
+    this.transcriptBtn = document.getElementById('transcriptBtn');
+    this.replayBtn = document.getElementById('replayBtn');
+    this.transcriptPanel = document.getElementById('transcriptPanel');
+    
+    // Transcript history
+    this.transcript = [];
+    this.lastResponse = null;
+    this.lastAudio = null;
     
     this.init();
   }
@@ -52,6 +60,15 @@ class ReyVoiceClient {
     if (this.settingsBtn) {
       this.settingsBtn.addEventListener('click', () => window.electronAPI.openSettings());
     }
+    if (this.transcriptBtn) {
+      this.transcriptBtn.addEventListener('click', () => this.toggleTranscript());
+    }
+    if (this.replayBtn) {
+      this.replayBtn.addEventListener('click', () => this.replayLastMessage());
+    }
+    
+    // Replay hotkey from main process
+    window.electronAPI.onReplayLastMessage(() => this.replayLastMessage());
     
     // Set initial expression
     this.setExpression('neutral');
@@ -239,6 +256,13 @@ class ReyVoiceClient {
         if (data.expression) {
           this.setExpression(data.expression);
         }
+        // Add to transcript
+        if (data.user_text) {
+          this.addToTranscript('user', data.user_text);
+        }
+        this.addToTranscript('rey', data.rey_text);
+        // Store for replay
+        this.lastResponse = data.rey_text;
         break;
       case 'error':
         this.showError(data.message);
@@ -252,6 +276,10 @@ class ReyVoiceClient {
         } else {
           this.setExpression('happy');
         }
+        // Add notification to transcript
+        const notifText = data.title ? `[${data.title}] ${data.message}` : data.message;
+        this.addToTranscript('rey', notifText);
+        this.lastResponse = data.message;
         break;
       case 'keepalive':
         // Ignore keepalive messages
@@ -327,6 +355,14 @@ class ReyVoiceClient {
     try {
       // Handle both Blob and ArrayBuffer
       const blob = data instanceof Blob ? data : new Blob([data], { type: 'audio/mpeg' });
+      
+      // Store for replay (clone the data)
+      if (data instanceof ArrayBuffer) {
+        this.lastAudio = data.slice(0);
+      } else if (data instanceof Blob) {
+        this.lastAudio = await data.arrayBuffer();
+      }
+      
       const url = URL.createObjectURL(blob);
       
       // Use Audio element for reliable MP3 playback
@@ -390,6 +426,63 @@ class ReyVoiceClient {
 
   hideError() {
     this.errorDiv.style.display = 'none';
+  }
+
+  toggleTranscript() {
+    const isVisible = this.transcriptPanel.classList.contains('show');
+    this.transcriptPanel.classList.toggle('show');
+    this.transcriptBtn.classList.toggle('active');
+    
+    if (!isVisible) {
+      this.renderTranscript();
+    }
+  }
+
+  addToTranscript(role, text) {
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    this.transcript.push({ role, text, timestamp });
+    
+    // Keep only last 50 messages
+    if (this.transcript.length > 50) {
+      this.transcript.shift();
+    }
+    
+    // Update display if visible
+    if (this.transcriptPanel.classList.contains('show')) {
+      this.renderTranscript();
+    }
+  }
+
+  renderTranscript() {
+    if (this.transcript.length === 0) {
+      this.transcriptPanel.innerHTML = '<div class="transcript-empty">No messages yet</div>';
+      return;
+    }
+    
+    this.transcriptPanel.innerHTML = this.transcript.map(entry => `
+      <div class="transcript-entry ${entry.role}">
+        <div>${entry.text}</div>
+        <div class="timestamp">${entry.timestamp}</div>
+      </div>
+    `).join('');
+    
+    // Scroll to bottom
+    this.transcriptPanel.scrollTop = this.transcriptPanel.scrollHeight;
+  }
+
+  replayLastMessage() {
+    if (this.lastAudio) {
+      // Replay stored audio
+      this.playAudio(this.lastAudio);
+    } else if (this.lastResponse) {
+      // Request re-synthesis from server
+      if (this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify({ 
+          type: 'replay_last',
+          text: this.lastResponse 
+        }));
+      }
+    }
   }
 }
 

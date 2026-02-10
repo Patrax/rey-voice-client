@@ -107,6 +107,67 @@
       color: white;
     }
 
+    .window-btn.active {
+      background: rgba(139, 92, 246, 0.5);
+      color: white;
+    }
+
+    /* Transcript panel */
+    .transcript-panel {
+      position: absolute;
+      top: 50px;
+      left: 16px;
+      right: 16px;
+      bottom: 60px;
+      background: rgba(0, 0, 0, 0.85);
+      border-radius: 12px;
+      padding: 12px;
+      overflow-y: auto;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 20;
+      backdrop-filter: blur(10px);
+    }
+
+    .transcript-panel.show {
+      display: flex;
+    }
+
+    .transcript-entry {
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+      max-width: 90%;
+    }
+
+    .transcript-entry.user {
+      background: rgba(99, 102, 241, 0.3);
+      color: #a5b4fc;
+      align-self: flex-end;
+      text-align: right;
+    }
+
+    .transcript-entry.rey {
+      background: rgba(139, 92, 246, 0.3);
+      color: #c4b5fd;
+      align-self: flex-start;
+    }
+
+    .transcript-entry .timestamp {
+      font-size: 10px;
+      color: rgba(255,255,255,0.3);
+      margin-top: 4px;
+    }
+
+    .transcript-empty {
+      color: rgba(255,255,255,0.3);
+      text-align: center;
+      padding: 20px;
+      font-size: 13px;
+    }
+
     .dot {
       width: 8px;
       height: 8px;
@@ -556,12 +617,19 @@
       <div class="particle" style="left: 90%; animation-delay: 4s;"></div>
     </div>
 
+    <!-- Transcript panel (hidden by default) -->
+    <div class="transcript-panel" id="transcriptPanel">
+      <div class="transcript-empty">No messages yet</div>
+    </div>
+
     <div class="status-bar">
       <div class="connection">
         <div class="dot" id="connection-dot"></div>
         <span id="status">Connecting...</span>
       </div>
       <div class="window-controls">
+        <button class="window-btn" id="transcriptBtn" title="Show transcript">📜</button>
+        <button class="window-btn" id="replayBtn" title="Replay last message">🔁</button>
         <button class="window-btn" id="settingsBtn" title="Settings">⚙</button>
         <button class="window-btn close" id="hideBtn" title="Hide">✕</button>
       </div>

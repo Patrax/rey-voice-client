@@ -12,12 +12,17 @@ class SettingsManager {
     this.hotkeyDisplay = document.getElementById('hotkeyDisplay');
     this.recordHotkeyBtn = document.getElementById('recordHotkey');
     this.clearHotkeyBtn = document.getElementById('clearHotkey');
+    this.replayHotkeyDisplay = document.getElementById('replayHotkeyDisplay');
+    this.recordReplayHotkeyBtn = document.getElementById('recordReplayHotkey');
+    this.clearReplayHotkeyBtn = document.getElementById('clearReplayHotkey');
     this.saveBtn = document.getElementById('saveBtn');
     this.cancelBtn = document.getElementById('cancelBtn');
     this.statusMessage = document.getElementById('statusMessage');
     
     this.isRecordingHotkey = false;
+    this.recordingTarget = null; // 'main' or 'replay'
     this.currentHotkey = '';
+    this.currentReplayHotkey = '';
     
     this.init();
   }
@@ -29,8 +34,10 @@ class SettingsManager {
     
     // Set up event listeners
     this.toggleTokenBtn.addEventListener('click', () => this.toggleTokenVisibility());
-    this.recordHotkeyBtn.addEventListener('click', () => this.startHotkeyRecording());
-    this.clearHotkeyBtn.addEventListener('click', () => this.clearHotkey());
+    this.recordHotkeyBtn.addEventListener('click', () => this.startHotkeyRecording('main'));
+    this.clearHotkeyBtn.addEventListener('click', () => this.clearHotkey('main'));
+    this.recordReplayHotkeyBtn.addEventListener('click', () => this.startHotkeyRecording('replay'));
+    this.clearReplayHotkeyBtn.addEventListener('click', () => this.clearHotkey('replay'));
     this.saveBtn.addEventListener('click', () => this.saveSettings());
     this.cancelBtn.addEventListener('click', () => window.settingsAPI.closeSettings());
     
@@ -49,7 +56,12 @@ class SettingsManager {
     
     if (config.hotkey) {
       this.currentHotkey = config.hotkey;
-      this.updateHotkeyDisplay(config.hotkey);
+      this.updateHotkeyDisplay(config.hotkey, 'main');
+    }
+    
+    if (config.replayHotkey) {
+      this.currentReplayHotkey = config.replayHotkey;
+      this.updateHotkeyDisplay(config.replayHotkey, 'replay');
     }
     
     if (config.hotkeyMode) {
@@ -64,24 +76,35 @@ class SettingsManager {
     this.toggleTokenBtn.textContent = isPassword ? '🔒' : '👁';
   }
 
-  startHotkeyRecording() {
+  startHotkeyRecording(target) {
     this.isRecordingHotkey = true;
-    this.hotkeyDisplay.classList.add('recording');
-    this.hotkeyDisplay.innerHTML = '<span class="placeholder">Press any key combination...</span>';
-    this.recordHotkeyBtn.textContent = 'Cancel';
-    this.recordHotkeyBtn.onclick = () => this.cancelHotkeyRecording();
+    this.recordingTarget = target;
+    
+    const display = target === 'replay' ? this.replayHotkeyDisplay : this.hotkeyDisplay;
+    const btn = target === 'replay' ? this.recordReplayHotkeyBtn : this.recordHotkeyBtn;
+    
+    display.classList.add('recording');
+    display.innerHTML = '<span class="placeholder">Press any key combination...</span>';
+    btn.textContent = 'Cancel';
+    btn.onclick = () => this.cancelHotkeyRecording(target);
     
     // Tell main process to start capturing
     window.settingsAPI.startHotkeyCapture();
   }
 
-  cancelHotkeyRecording() {
+  cancelHotkeyRecording(target) {
     this.isRecordingHotkey = false;
-    this.hotkeyDisplay.classList.remove('recording');
-    this.updateHotkeyDisplay(this.currentHotkey);
-    this.recordHotkeyBtn.textContent = 'Record';
-    this.recordHotkeyBtn.onclick = () => this.startHotkeyRecording();
     
+    const display = target === 'replay' ? this.replayHotkeyDisplay : this.hotkeyDisplay;
+    const btn = target === 'replay' ? this.recordReplayHotkeyBtn : this.recordHotkeyBtn;
+    const currentKey = target === 'replay' ? this.currentReplayHotkey : this.currentHotkey;
+    
+    display.classList.remove('recording');
+    this.updateHotkeyDisplay(currentKey, target);
+    btn.textContent = 'Record';
+    btn.onclick = () => this.startHotkeyRecording(target);
+    
+    this.recordingTarget = null;
     window.settingsAPI.stopHotkeyCapture();
   }
 
@@ -120,31 +143,48 @@ class SettingsManager {
   }
 
   hotkeyRecorded(accelerator) {
+    const target = this.recordingTarget || 'main';
     this.isRecordingHotkey = false;
-    this.currentHotkey = accelerator;
-    this.hotkeyDisplay.classList.remove('recording');
-    this.updateHotkeyDisplay(accelerator);
-    this.recordHotkeyBtn.textContent = 'Record';
-    this.recordHotkeyBtn.onclick = () => this.startHotkeyRecording();
+    
+    const display = target === 'replay' ? this.replayHotkeyDisplay : this.hotkeyDisplay;
+    const btn = target === 'replay' ? this.recordReplayHotkeyBtn : this.recordHotkeyBtn;
+    
+    if (target === 'replay') {
+      this.currentReplayHotkey = accelerator;
+    } else {
+      this.currentHotkey = accelerator;
+    }
+    
+    display.classList.remove('recording');
+    this.updateHotkeyDisplay(accelerator, target);
+    btn.textContent = 'Record';
+    btn.onclick = () => this.startHotkeyRecording(target);
+    this.recordingTarget = null;
   }
 
-  updateHotkeyDisplay(hotkey) {
+  updateHotkeyDisplay(hotkey, target = 'main') {
+    const display = target === 'replay' ? this.replayHotkeyDisplay : this.hotkeyDisplay;
+    
     if (hotkey) {
       // Make it look nice
-      const display = hotkey
+      const formatted = hotkey
         .replace('CommandOrControl', '⌘/Ctrl')
         .replace('Shift', '⇧')
         .replace('Alt', '⌥')
         .replace(/\+/g, ' + ');
-      this.hotkeyDisplay.innerHTML = `<span>${display}</span>`;
+      display.innerHTML = `<span>${formatted}</span>`;
     } else {
-      this.hotkeyDisplay.innerHTML = '<span class="placeholder">No hotkey set</span>';
+      display.innerHTML = '<span class="placeholder">No hotkey set</span>';
     }
   }
 
-  clearHotkey() {
-    this.currentHotkey = '';
-    this.updateHotkeyDisplay('');
+  clearHotkey(target = 'main') {
+    if (target === 'replay') {
+      this.currentReplayHotkey = '';
+    } else {
+      this.currentHotkey = '';
+    }
+    this.updateHotkeyDisplay('', target);
   }
 
   async saveSettings() {
@@ -154,6 +194,7 @@ class SettingsManager {
       serverUrl: this.serverUrlInput.value.trim(),
       authToken: this.authTokenInput.value.trim(),
       hotkey: this.currentHotkey,
+      replayHotkey: this.currentReplayHotkey,
       hotkeyMode: hotkeyMode
     };
     
