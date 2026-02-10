@@ -14,6 +14,7 @@ function loadConfig() {
     hotkeyMode: 'push_to_talk',
     replayHotkey: '',
     transcriptHotkey: '',
+    toggleWindowHotkey: '',
     wakeWordEnabled: true
   };
   
@@ -233,6 +234,26 @@ function registerShortcuts() {
       }
     } catch (err) {
       console.error('Invalid transcript hotkey:', config.transcriptHotkey, err);
+    }
+  }
+  
+  // Toggle window visibility hotkey
+  if (config.toggleWindowHotkey) {
+    try {
+      const registered = globalShortcut.register(config.toggleWindowHotkey, () => {
+        if (mainWindow) {
+          if (mainWindow.isVisible()) {
+            mainWindow.hide();
+          } else {
+            mainWindow.show();
+          }
+        }
+      });
+      if (registered) {
+        console.log('Registered toggle window hotkey:', config.toggleWindowHotkey);
+      }
+    } catch (err) {
+      console.error('Invalid toggle window hotkey:', config.toggleWindowHotkey, err);
     }
   }
 }

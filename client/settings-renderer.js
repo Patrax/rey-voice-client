@@ -19,15 +19,19 @@ class SettingsManager {
     this.transcriptHotkeyDisplay = document.getElementById('transcriptHotkeyDisplay');
     this.recordTranscriptHotkeyBtn = document.getElementById('recordTranscriptHotkey');
     this.clearTranscriptHotkeyBtn = document.getElementById('clearTranscriptHotkey');
+    this.toggleWindowHotkeyDisplay = document.getElementById('toggleWindowHotkeyDisplay');
+    this.recordToggleWindowHotkeyBtn = document.getElementById('recordToggleWindowHotkey');
+    this.clearToggleWindowHotkeyBtn = document.getElementById('clearToggleWindowHotkey');
     this.saveBtn = document.getElementById('saveBtn');
     this.cancelBtn = document.getElementById('cancelBtn');
     this.statusMessage = document.getElementById('statusMessage');
     
     this.isRecordingHotkey = false;
-    this.recordingTarget = null; // 'main', 'replay', or 'transcript'
+    this.recordingTarget = null; // 'main', 'replay', 'transcript', or 'toggleWindow'
     this.currentHotkey = '';
     this.currentReplayHotkey = '';
     this.currentTranscriptHotkey = '';
+    this.currentToggleWindowHotkey = '';
     
     this.init();
   }
@@ -45,6 +49,8 @@ class SettingsManager {
     this.clearReplayHotkeyBtn.addEventListener('click', () => this.clearHotkey('replay'));
     this.recordTranscriptHotkeyBtn.addEventListener('click', () => this.startHotkeyRecording('transcript'));
     this.clearTranscriptHotkeyBtn.addEventListener('click', () => this.clearHotkey('transcript'));
+    this.recordToggleWindowHotkeyBtn.addEventListener('click', () => this.startHotkeyRecording('toggleWindow'));
+    this.clearToggleWindowHotkeyBtn.addEventListener('click', () => this.clearHotkey('toggleWindow'));
     this.saveBtn.addEventListener('click', () => this.saveSettings());
     this.cancelBtn.addEventListener('click', () => window.settingsAPI.closeSettings());
     
@@ -77,6 +83,11 @@ class SettingsManager {
       this.updateHotkeyDisplay(config.transcriptHotkey, 'transcript');
     }
     
+    if (config.toggleWindowHotkey) {
+      this.currentToggleWindowHotkey = config.toggleWindowHotkey;
+      this.updateHotkeyDisplay(config.toggleWindowHotkey, 'toggleWindow');
+    }
+    
     if (config.hotkeyMode) {
       const radio = document.querySelector(`input[name="hotkeyMode"][value="${config.hotkeyMode}"]`);
       if (radio) radio.checked = true;
@@ -94,6 +105,8 @@ class SettingsManager {
       return { display: this.replayHotkeyDisplay, btn: this.recordReplayHotkeyBtn };
     } else if (target === 'transcript') {
       return { display: this.transcriptHotkeyDisplay, btn: this.recordTranscriptHotkeyBtn };
+    } else if (target === 'toggleWindow') {
+      return { display: this.toggleWindowHotkeyDisplay, btn: this.recordToggleWindowHotkeyBtn };
     }
     return { display: this.hotkeyDisplay, btn: this.recordHotkeyBtn };
   }
@@ -118,7 +131,8 @@ class SettingsManager {
     
     const { display, btn } = this.getHotkeyElements(target);
     const currentKey = target === 'replay' ? this.currentReplayHotkey : 
-                       target === 'transcript' ? this.currentTranscriptHotkey : this.currentHotkey;
+                       target === 'transcript' ? this.currentTranscriptHotkey :
+                       target === 'toggleWindow' ? this.currentToggleWindowHotkey : this.currentHotkey;
     
     display.classList.remove('recording');
     this.updateHotkeyDisplay(currentKey, target);
@@ -173,6 +187,8 @@ class SettingsManager {
       this.currentReplayHotkey = accelerator;
     } else if (target === 'transcript') {
       this.currentTranscriptHotkey = accelerator;
+    } else if (target === 'toggleWindow') {
+      this.currentToggleWindowHotkey = accelerator;
     } else {
       this.currentHotkey = accelerator;
     }
@@ -205,6 +221,8 @@ class SettingsManager {
       this.currentReplayHotkey = '';
     } else if (target === 'transcript') {
       this.currentTranscriptHotkey = '';
+    } else if (target === 'toggleWindow') {
+      this.currentToggleWindowHotkey = '';
     } else {
       this.currentHotkey = '';
     }
@@ -220,6 +238,7 @@ class SettingsManager {
       hotkey: this.currentHotkey,
       replayHotkey: this.currentReplayHotkey,
       transcriptHotkey: this.currentTranscriptHotkey,
+      toggleWindowHotkey: this.currentToggleWindowHotkey,
       hotkeyMode: hotkeyMode,
       wakeWordEnabled: this.wakeWordEnabledCheckbox.checked
     };
