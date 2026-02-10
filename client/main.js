@@ -6,6 +6,7 @@ let tray = null;
 
 // Server configuration - default to production Cloudflare tunnel
 const SERVER_URL = process.env.REY_SERVER_URL || 'wss://rey.patriciojeri.com/voice';
+const AUTH_TOKEN = process.env.REY_AUTH_TOKEN || '';
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -93,9 +94,9 @@ app.whenReady().then(() => {
   createTray();
   registerShortcuts();
   
-  // Send server URL to renderer
+  // Send server config to renderer
   mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.send('config', { serverUrl: SERVER_URL });
+    mainWindow.webContents.send('config', { serverUrl: SERVER_URL, authToken: AUTH_TOKEN });
   });
 });
 
@@ -117,5 +118,5 @@ app.on('will-quit', () => {
 
 // IPC handlers
 ipcMain.handle('get-config', () => {
-  return { serverUrl: SERVER_URL };
+  return { serverUrl: SERVER_URL, authToken: AUTH_TOKEN };
 });

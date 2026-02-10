@@ -434,8 +434,17 @@ class VoiceSession:
 @app.websocket("/voice")
 async def voice_endpoint(websocket: WebSocket):
     """WebSocket endpoint for voice streaming."""
+    # Authentication check
+    if config.AUTH_TOKEN:
+        # Check query parameter: ws://server/voice?token=xxx
+        token = websocket.query_params.get("token", "")
+        if token != config.AUTH_TOKEN:
+            logger.warning(f"Unauthorized connection attempt from {websocket.client.host}")
+            await websocket.close(code=4001, reason="Unauthorized")
+            return
+    
     await websocket.accept()
-    logger.info("Client connected")
+    logger.info(f"Client connected from {websocket.client.host}")
     
     session = VoiceSession(websocket)
     

@@ -31,3 +31,6 @@ ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  
 # Server
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8765"))
+
+# Authentication
+AUTH_TOKEN = os.getenv("AUTH_TOKEN", "")  # Required for WebSocket connections

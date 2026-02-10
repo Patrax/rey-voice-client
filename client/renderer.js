@@ -35,6 +35,7 @@ class ReyVoiceClient {
     // Get config from main process
     const config = await window.electronAPI.getConfig();
     this.serverUrl = config.serverUrl;
+    this.authToken = config.authToken || '';
     
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
@@ -120,10 +121,16 @@ class ReyVoiceClient {
     
     this.statusText.textContent = 'Connecting...';
     
+    // Build URL with auth token if provided
+    let wsUrl = this.serverUrl;
+    if (this.authToken) {
+      const separator = wsUrl.includes('?') ? '&' : '?';
+      wsUrl = `${wsUrl}${separator}token=${this.authToken}`;
+    }
     console.log('Attempting to connect to:', this.serverUrl);
     
     try {
-      this.socket = new WebSocket(this.serverUrl);
+      this.socket = new WebSocket(wsUrl);
       this.socket.binaryType = 'arraybuffer';
       
       this.socket.onopen = () => {
