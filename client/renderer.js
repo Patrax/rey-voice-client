@@ -23,6 +23,7 @@ class ReyVoiceClient {
     this.visualizer = document.getElementById('visualizer');
     this.errorDiv = document.getElementById('error');
     this.character = document.getElementById('character');
+    this.characterImage = document.getElementById('characterImage');
     this.currentExpression = 'neutral';
     this.hideBtn = document.getElementById('hideBtn');
     this.settingsBtn = document.getElementById('settingsBtn');
@@ -327,7 +328,7 @@ class ReyVoiceClient {
   }
 
   setExpression(expression) {
-    if (this.character) {
+    if (this.character && this.characterImage) {
       // Remove all expr- classes first
       this.character.classList.forEach(cls => {
         if (cls.startsWith('expr-')) {
@@ -335,6 +336,9 @@ class ReyVoiceClient {
         }
       });
       this.character.classList.add(`expr-${expression}`);
+      
+      // Update the image
+      this.characterImage.src = `assets/expressions/${expression}.png`;
       this.currentExpression = expression;
       console.log('Expression:', expression);
     }

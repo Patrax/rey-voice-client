@@ -182,392 +182,51 @@
       box-shadow: 0 0 10px #2ed573;
     }
 
-    /* 3D Face Container */
-    .face-container {
-      perspective: 800px;
+    /* Character Container */
+    .character-container {
       margin-bottom: 20px;
-    }
-
-    .face {
-      width: 160px;
-      height: 160px;
-      position: relative;
-      transform-style: preserve-3d;
       animation: float 4s ease-in-out infinite;
     }
 
+    .character-image {
+      width: 200px;
+      height: 200px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.5));
+      transition: filter 0.3s ease;
+    }
+
     @keyframes float {
-      0%, 100% { transform: translateY(0) rotateX(5deg) rotateY(0deg); }
-      25% { transform: translateY(-8px) rotateX(0deg) rotateY(5deg); }
-      50% { transform: translateY(0) rotateX(-5deg) rotateY(0deg); }
-      75% { transform: translateY(-8px) rotateX(0deg) rotateY(-5deg); }
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
     }
 
-    /* Glowing orb head */
-    .head {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, #8b5cf6 0%, #6366f1 50%, #4f46e5 100%);
-      box-shadow: 
-        0 0 60px rgba(139, 92, 246, 0.5),
-        0 0 100px rgba(99, 102, 241, 0.3),
-        inset 0 0 60px rgba(255,255,255,0.1);
-      position: relative;
-      transition: all 0.5s ease;
+    /* Expression-based effects */
+    .expr-listening .character-image {
+      filter: drop-shadow(0 0 30px rgba(139, 92, 246, 0.7));
+      animation: pulse-glow 1s ease infinite alternate;
     }
 
-    /* Expression-based head colors */
-    .expr-happy .head {
-      background: radial-gradient(circle at 30% 30%, #a78bfa 0%, #8b5cf6 50%, #7c3aed 100%);
-      box-shadow: 0 0 60px rgba(167, 139, 250, 0.6), 0 0 100px rgba(139, 92, 246, 0.4);
+    .expr-speaking .character-image {
+      filter: drop-shadow(0 0 25px rgba(139, 92, 246, 0.6));
     }
 
-    .expr-excited .head {
-      background: radial-gradient(circle at 30% 30%, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
-      box-shadow: 0 0 60px rgba(251, 191, 36, 0.6), 0 0 100px rgba(245, 158, 11, 0.4);
-      animation: float 2s ease-in-out infinite, pulse-glow 0.5s ease infinite alternate;
+    .expr-excited .character-image,
+    .expr-laughing .character-image {
+      filter: drop-shadow(0 0 30px rgba(251, 191, 36, 0.6));
     }
 
-    .expr-love .head {
-      background: radial-gradient(circle at 30% 30%, #fb7185 0%, #f43f5e 50%, #e11d48 100%);
-      box-shadow: 0 0 60px rgba(251, 113, 133, 0.6), 0 0 100px rgba(244, 63, 94, 0.4);
+    .expr-love .character-image {
+      filter: drop-shadow(0 0 30px rgba(244, 63, 94, 0.6));
     }
 
-    .expr-sad .head {
-      background: radial-gradient(circle at 30% 30%, #60a5fa 0%, #3b82f6 50%, #2563eb 100%);
-      box-shadow: 0 0 60px rgba(96, 165, 250, 0.4), 0 0 100px rgba(59, 130, 246, 0.3);
-    }
-
-    .expr-thinking .head {
-      background: radial-gradient(circle at 30% 30%, #22d3ee 0%, #06b6d4 50%, #0891b2 100%);
-      box-shadow: 0 0 60px rgba(34, 211, 238, 0.5), 0 0 100px rgba(6, 182, 212, 0.3);
-    }
-
-    .expr-laughing .head {
-      background: radial-gradient(circle at 30% 30%, #fcd34d 0%, #fbbf24 50%, #f59e0b 100%);
-      box-shadow: 0 0 60px rgba(252, 211, 77, 0.6), 0 0 100px rgba(251, 191, 36, 0.4);
-      animation: float 2s ease-in-out infinite, shake 0.1s ease infinite;
+    .expr-sad .character-image {
+      filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.5)) brightness(0.9);
     }
 
     @keyframes pulse-glow {
-      from { filter: brightness(1); }
-      to { filter: brightness(1.2); }
-    }
-
-    @keyframes shake {
-      0%, 100% { transform: translateY(0) rotateZ(0deg); }
-      50% { transform: translateY(-2px) rotateZ(1deg); }
-    }
-
-    /* Eyes */
-    .eyes {
-      position: absolute;
-      top: 35%;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 35px;
-    }
-
-    .eye {
-      width: 24px;
-      height: 24px;
-      background: white;
-      border-radius: 50%;
-      position: relative;
-      box-shadow: 0 0 20px rgba(255,255,255,0.5);
-      transition: all 0.2s ease;
-    }
-
-    .pupil {
-      width: 12px;
-      height: 12px;
-      background: #1a1a2e;
-      border-radius: 50%;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      transition: all 0.1s ease;
-    }
-
-    .pupil::after {
-      content: '';
-      position: absolute;
-      width: 4px;
-      height: 4px;
-      background: white;
-      border-radius: 50%;
-      top: 2px;
-      right: 2px;
-    }
-
-    /* Mouth */
-    .mouth {
-      position: absolute;
-      bottom: 28%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 30px;
-      height: 12px;
-      background: rgba(255,255,255,0.9);
-      border-radius: 0 0 30px 30px;
-      transition: all 0.2s ease;
-      box-shadow: 0 0 15px rgba(255,255,255,0.3);
-    }
-
-    /* Blush marks */
-    .blush {
-      position: absolute;
-      top: 50%;
-      width: 20px;
-      height: 8px;
-      background: rgba(255, 150, 180, 0);
-      border-radius: 50%;
-      transition: all 0.3s ease;
-    }
-
-    .blush.left { left: 15%; }
-    .blush.right { right: 15%; }
-
-    /* === EXPRESSIONS === */
-
-    /* Neutral */
-    .expr-neutral .mouth {
-      height: 6px;
-      width: 20px;
-      border-radius: 10px;
-    }
-
-    /* Happy */
-    .expr-happy .eye {
-      height: 20px;
-    }
-    .expr-happy .mouth {
-      width: 35px;
-      height: 15px;
-    }
-    .expr-happy .blush {
-      background: rgba(255, 150, 180, 0.4);
-    }
-
-    /* Excited */
-    .expr-excited .eye {
-      transform: scale(1.2);
-      animation: bounce-eyes 0.3s ease infinite alternate;
-    }
-    .expr-excited .mouth {
-      width: 40px;
-      height: 20px;
-      border-radius: 50%;
-    }
-    .expr-excited .blush {
-      background: rgba(255, 150, 180, 0.5);
-    }
-
-    @keyframes bounce-eyes {
-      from { transform: scale(1.2) translateY(0); }
-      to { transform: scale(1.2) translateY(-3px); }
-    }
-
-    /* Thinking */
-    .expr-thinking .pupil {
-      animation: look-around 2s ease infinite;
-    }
-    .expr-thinking .mouth {
-      width: 15px;
-      height: 6px;
-      border-radius: 10px;
-      transform: translateX(-30%);
-    }
-    .expr-thinking .eye:last-child {
-      height: 18px;
-    }
-
-    @keyframes look-around {
-      0%, 100% { transform: translate(-50%, -50%); }
-      25% { transform: translate(-20%, -50%); }
-      50% { transform: translate(-50%, -30%); }
-      75% { transform: translate(-80%, -50%); }
-    }
-
-    /* Listening */
-    .expr-listening .eye {
-      height: 28px;
-      width: 28px;
-    }
-    .expr-listening .pupil {
-      width: 14px;
-      height: 14px;
-    }
-    .expr-listening .mouth {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-    }
-    .expr-listening .head {
-      animation: float 4s ease-in-out infinite, pulse-listen 1s ease infinite alternate;
-    }
-
-    @keyframes pulse-listen {
-      from { box-shadow: 0 0 60px rgba(139, 92, 246, 0.5), 0 0 100px rgba(99, 102, 241, 0.3); }
-      to { box-shadow: 0 0 80px rgba(139, 92, 246, 0.7), 0 0 120px rgba(99, 102, 241, 0.5); }
-    }
-
-    /* Speaking */
-    .expr-speaking .mouth {
-      animation: speak 0.15s ease infinite alternate;
-    }
-
-    @keyframes speak {
-      from { height: 12px; width: 25px; }
-      to { height: 22px; width: 35px; }
-    }
-
-    /* Surprised */
-    .expr-surprised .eye {
-      width: 32px;
-      height: 32px;
-    }
-    .expr-surprised .pupil {
-      width: 8px;
-      height: 8px;
-    }
-    .expr-surprised .mouth {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-    }
-
-    /* Confused */
-    .expr-confused .eye:first-child {
-      height: 20px;
-    }
-    .expr-confused .eye:last-child {
-      height: 28px;
-      transform: translateY(-4px);
-    }
-    .expr-confused .mouth {
-      width: 25px;
-      height: 8px;
-      border-radius: 10px;
-      transform: translateX(-50%) rotate(-10deg);
-    }
-    .expr-confused .pupil {
-      animation: confused-look 1.5s ease infinite;
-    }
-
-    @keyframes confused-look {
-      0%, 100% { transform: translate(-50%, -50%); }
-      50% { transform: translate(-30%, -60%); }
-    }
-
-    /* Laughing */
-    .expr-laughing .eye {
-      height: 8px;
-      border-radius: 20px 20px 0 0;
-    }
-    .expr-laughing .pupil {
-      opacity: 0;
-    }
-    .expr-laughing .mouth {
-      width: 45px;
-      height: 22px;
-    }
-    .expr-laughing .blush {
-      background: rgba(255, 150, 180, 0.5);
-    }
-
-    /* Love */
-    .expr-love .eye {
-      background: transparent;
-      box-shadow: none;
-    }
-    .expr-love .eye::before {
-      content: '♥';
-      font-size: 28px;
-      color: white;
-      text-shadow: 0 0 20px rgba(255,255,255,0.8);
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      animation: heartbeat 0.6s ease infinite alternate;
-    }
-    .expr-love .pupil { opacity: 0; }
-    .expr-love .mouth {
-      width: 35px;
-      height: 16px;
-    }
-    .expr-love .blush {
-      background: rgba(255, 150, 180, 0.6);
-    }
-
-    @keyframes heartbeat {
-      from { transform: translate(-50%, -50%) scale(1); }
-      to { transform: translate(-50%, -50%) scale(1.15); }
-    }
-
-    /* Sad */
-    .expr-sad .eye::after {
-      content: '';
-      position: absolute;
-      bottom: -15px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 6px;
-      height: 12px;
-      background: rgba(100, 200, 255, 0.7);
-      border-radius: 50%;
-      animation: tear 1.5s ease infinite;
-    }
-    .expr-sad .mouth {
-      height: 12px;
-      width: 30px;
-      border-radius: 30px 30px 0 0;
-      transform: translateX(-50%) rotate(180deg);
-      bottom: 32%;
-    }
-    .expr-sad .head {
-      animation: float 6s ease-in-out infinite;
-    }
-
-    @keyframes tear {
-      0% { opacity: 1; transform: translateX(-50%) translateY(0); }
-      100% { opacity: 0; transform: translateX(-50%) translateY(20px); }
-    }
-
-    /* Wink */
-    .expr-wink .eye:first-child {
-      height: 6px;
-      border-radius: 20px;
-    }
-    .expr-wink .eye:first-child .pupil {
-      opacity: 0;
-    }
-    .expr-wink .mouth {
-      width: 35px;
-      height: 12px;
-      transform: translateX(-40%);
-    }
-
-    /* Sleepy */
-    .expr-sleepy .eye {
-      height: 6px;
-      border-radius: 20px;
-    }
-    .expr-sleepy .pupil {
-      opacity: 0;
-    }
-    .expr-sleepy .mouth {
-      width: 18px;
-      height: 10px;
-      border-radius: 50%;
-    }
-    .expr-sleepy .head {
-      animation: float 6s ease-in-out infinite;
-      filter: brightness(0.8);
+      from { filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.5)); }
+      to { filter: drop-shadow(0 0 40px rgba(139, 92, 246, 0.8)); }
     }
 
     /* Message */
@@ -635,18 +294,8 @@
       </div>
     </div>
 
-    <div class="face-container">
-      <div class="face" id="character">
-        <div class="head">
-          <div class="eyes">
-            <div class="eye"><div class="pupil"></div></div>
-            <div class="eye"><div class="pupil"></div></div>
-          </div>
-          <div class="blush left"></div>
-          <div class="blush right"></div>
-          <div class="mouth"></div>
-        </div>
-      </div>
+    <div class="character-container" id="character">
+      <img src="assets/expressions/neutral.png" alt="Rey" class="character-image" id="characterImage">
     </div>
 
     <div class="message-area">
