@@ -276,9 +276,12 @@ class ReyRealtimeWebRTC {
     if (type === 'response.audio.done') {
       this.audioDone = true;
       this.deliverFinalResponse();
-      // audio.done means OpenAI has finished the spoken response. Keep only a
-      // tiny grace period for the media pipeline tail; do not block the next F19.
-      this.scheduleFinishTurn(150);
+      // audio.done means OpenAI has finished generating audio, but Electron can
+      // still be playing buffered WebRTC media. Mark the UI ready now so F19 is
+      // responsive, but keep the peer connection alive long enough to avoid
+      // clipping the tail. A new F19 press will close this draining turn first.
+      this.onEvent?.({ type: 'state', state: 'waiting', message: 'Ready' });
+      this.scheduleFinishTurn(this.estimateRemainingPlaybackMs());
       return;
     }
 
@@ -303,6 +306,7 @@ class ReyRealtimeWebRTC {
       if (!hasToolCall) {
         this.deliverFinalResponse();
         if (!this.audioDone) {
+          this.onEvent?.({ type: 'state', state: 'waiting', message: 'Ready' });
           this.scheduleFinishTurn(1000);
         }
       }
@@ -370,6 +374,14 @@ class ReyRealtimeWebRTC {
       rey_text: text,
       elapsed_ms: Math.round(performance.now() - this.startedAt),
     });
+  }
+
+  estimateRemainingPlaybackMs() {
+    const text = this.responseText.trim();
+    const words = text ? text.split(/\s+/).length : 8;
+    // Keep the transport alive for likely buffered playback, but cap it so a
+    // broken event stream cannot hold the old peer connection forever.
+    return Math.max(1800, Math.min(30000, Math.round((words / 2.6) * 1000 + 900)));
   }
 
   scheduleFinishTurn(delayMs) {

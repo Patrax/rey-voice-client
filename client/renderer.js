@@ -332,9 +332,9 @@ class ReyVoiceClient {
   async startRealtimeTurn(reason = 'manual') {
     if (!this.useWebRTCRealtime()) return;
     if (this.realtime?.isActive()) {
-      // If Rey is speaking, a new press means interruption/new turn. If she is
-      // listening or thinking, leave the current turn alone and wait for release.
-      if (this.state === 'speaking' || this.isPlayingAudio) {
+      // If an old turn is speaking/draining, close it before starting the next
+      // F19 turn. If it is actively listening/thinking, wait for the stop press.
+      if (this.state === 'speaking' || this.state === 'waiting' || this.isPlayingAudio) {
         await this.realtime.interrupt();
         this.isPlayingAudio = false;
         this.realtimeTurnActive = false;
