@@ -374,6 +374,20 @@ class ReyVoiceClient {
       case 'user_transcript':
         // Store final transcript once the response arrives to keep ordering clean.
         this.pendingRealtimeUserText = event.text;
+        this.message.textContent = `Heard: ${event.text.substring(0, 60)}${event.text.length > 60 ? '...' : ''}`;
+        break;
+      case 'speech_started':
+        this.message.textContent = 'Listening... I hear you';
+        break;
+      case 'speech_stopped':
+        if (this.state === 'listening') this.message.textContent = 'Got it — press F19 again when done';
+        break;
+      case 'no_speech':
+        this.showError("I didn't detect any speech from the mic for that turn.");
+        this.isPlayingAudio = false;
+        this.realtimeTurnActive = false;
+        this.setState('waiting', 'Ready');
+        window.electronAPI.listeningStopped();
         break;
       case 'partial_response':
         this.message.textContent = event.text.substring(0, 80) + (event.text.length > 80 ? '...' : '');

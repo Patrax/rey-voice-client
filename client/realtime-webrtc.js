@@ -24,6 +24,9 @@ class ReyRealtimeWebRTC {
     this.responseDone = false;
     this.audioDone = false;
     this.delivered = false;
+    this.speechStarted = false;
+    this.speechStopped = false;
+    this.ownsLocalStream = false;
     this.userTranscript = '';
     this.responseText = '';
     this.toolArguments = new Map();
@@ -49,6 +52,8 @@ class ReyRealtimeWebRTC {
     this.responseDone = false;
     this.audioDone = false;
     this.delivered = false;
+    this.speechStarted = false;
+    this.speechStopped = false;
     this.userTranscript = '';
     this.responseText = '';
     this.toolArguments.clear();
@@ -98,12 +103,13 @@ class ReyRealtimeWebRTC {
         }
       };
 
-      this.localStream = this.getMediaStream();
-      if (!this.localStream) {
-        this.localStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        });
-      }
+      // Use a dedicated WebRTC mic stream for each turn. The app's existing
+      // stream is also being consumed by the AudioWorklet/server wake pipeline;
+      // keeping Realtime isolated avoids stale/shared track behavior.
+      this.localStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      this.ownsLocalStream = true;
       this.inputTrack = this.localStream.getAudioTracks()[0];
       if (!this.inputTrack) throw new Error('No microphone audio track available');
       this.inputTrack.enabled = true;
@@ -145,10 +151,17 @@ class ReyRealtimeWebRTC {
       this.remoteAudio.srcObject = null;
     }
     if (this.inputTrack) this.inputTrack.enabled = true;
+    if (this.ownsLocalStream && this.localStream) {
+      for (const track of this.localStream.getTracks()) {
+        try { track.stop(); } catch {}
+      }
+    }
     this.pc = null;
     this.dc = null;
     this.remoteAudio = null;
     this.inputTrack = null;
+    this.localStream = null;
+    this.ownsLocalStream = false;
   }
 
   clearTimers() {
@@ -245,10 +258,20 @@ class ReyRealtimeWebRTC {
       return;
     }
 
+    if (type === 'input_audio_buffer.speech_started') {
+      this.speechStarted = true;
+      console.log('Realtime detected speech start');
+      this.onEvent?.({ type: 'speech_started' });
+      return;
+    }
+
     if (type === 'input_audio_buffer.speech_stopped') {
+      this.speechStopped = true;
+      console.log('Realtime detected speech stop');
+      this.onEvent?.({ type: 'speech_stopped' });
       // Toggle push-to-talk must wait for Patricio's second F19 press. Only
       // wake-word turns auto-submit when server VAD hears the end of speech.
-      if (this.turnReason === 'wake' && !this.pendingStop) {
+      if (this.turnReason === 'wake' && !this.pendingStop && this.speechStarted) {
         setTimeout(() => this.requestResponse(), 100);
       }
       return;
@@ -352,6 +375,12 @@ class ReyRealtimeWebRTC {
   requestResponse() {
     if (this.awaitingResponse) return false;
     if (!this.isReady()) return false;
+    if (!this.speechStarted) {
+      console.warn('Realtime response blocked: no speech was detected for this turn');
+      this.onEvent?.({ type: 'no_speech' });
+      this.finishTurn();
+      return false;
+    }
     this.awaitingResponse = true;
     this.pendingStop = false;
     this.send({ type: 'response.create', response: { modalities: ['text', 'audio'] } });
