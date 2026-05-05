@@ -227,6 +227,14 @@ class VoiceSession:
 - Sound natural, like talking to a friend"""
 
         async def do_request():
+            model = config.OPENCLAW_MODEL or "openclaw"
+            if not model.startswith("openclaw"):
+                logger.warning(
+                    "Ignoring invalid OPENCLAW_MODEL=%r for Gateway chat endpoint; using 'openclaw'",
+                    model,
+                )
+                model = "openclaw"
+
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
                     f"{config.OPENCLAW_GATEWAY_URL}/v1/chat/completions",
@@ -236,7 +244,7 @@ class VoiceSession:
                         "x-openclaw-agent-id": config.OPENCLAW_AGENT_ID,
                     },
                     json={
-                        "model": config.OPENCLAW_MODEL or "openclaw",
+                        "model": model,
                         "messages": [
                             {"role": "system", "content": voice_system_prompt},
                             {"role": "user", "content": text}
