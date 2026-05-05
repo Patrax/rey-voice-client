@@ -74,6 +74,7 @@ def require_http_token(authorization: str | None) -> None:
 
 class RealtimeSessionRequest(BaseModel):
     transport: str = "webrtc"
+    reason: str = "manual"
 
 
 class OpenClawAskRequest(BaseModel):
@@ -154,7 +155,7 @@ async def create_realtime_session(
         "instructions": build_voice_instructions(),
         "modalities": ["text", "audio"],
         "input_audio_transcription": {"model": config.OPENAI_REALTIME_TRANSCRIPTION_MODEL},
-        "turn_detection": {
+        "turn_detection": None if body.reason == "manual" else {
             "type": "server_vad",
             "threshold": 0.5,
             "prefix_padding_ms": 300,

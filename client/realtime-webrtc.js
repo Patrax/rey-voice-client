@@ -65,7 +65,7 @@ class ReyRealtimeWebRTC {
     try {
       this.onEvent?.({ type: 'state', state: 'listening', message: reason === 'wake' ? "I'm listening..." : 'Realtime listening...' });
 
-      const session = await this.createSession();
+      const session = await this.createSession(reason);
       const clientSecret = session?.client_secret?.value;
       if (!clientSecret) {
         throw new Error('Realtime session did not include a client secret');
@@ -125,6 +125,9 @@ class ReyRealtimeWebRTC {
     if (this.inputTrack) this.inputTrack.enabled = false;
     this.pendingStop = true;
     this.onEvent?.({ type: 'state', state: 'processing', message: 'Thinking...' });
+    if (this.turnReason === 'manual') {
+      this.send({ type: 'input_audio_buffer.commit' });
+    }
     this.requestResponse();
   }
 
@@ -162,11 +165,11 @@ class ReyRealtimeWebRTC {
     }
   }
 
-  async createSession() {
+  async createSession(reason = 'manual') {
     const response = await fetch(`${this.getServerBaseUrl()}/realtime/session`, {
       method: 'POST',
       headers: this.authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ transport: 'webrtc' }),
+      body: JSON.stringify({ transport: 'webrtc', reason }),
     });
     if (!response.ok) throw new Error(`Realtime session failed: ${response.status}`);
     return response.json();
@@ -189,18 +192,20 @@ class ReyRealtimeWebRTC {
   }
 
   configureSession() {
+    const turnDetection = this.turnReason === 'manual' ? null : {
+      type: 'server_vad',
+      threshold: 0.5,
+      prefix_padding_ms: 300,
+      silence_duration_ms: 650,
+      create_response: false,
+    };
+
     this.send({
       type: 'session.update',
       session: {
         modalities: ['text', 'audio'],
         input_audio_transcription: { model: 'whisper-1' },
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 650,
-          create_response: false,
-        },
+        turn_detection: turnDetection,
         tools: [
           {
             type: 'function',
@@ -271,7 +276,7 @@ class ReyRealtimeWebRTC {
     if (type === 'response.audio.done') {
       this.audioDone = true;
       this.deliverFinalResponse();
-      this.scheduleFinishAfterSpeech();
+      this.scheduleFinishTurn(1000);
       return;
     }
 
@@ -295,7 +300,9 @@ class ReyRealtimeWebRTC {
       const hasToolCall = output.some((item) => item.type === 'function_call');
       if (!hasToolCall) {
         this.deliverFinalResponse();
-        this.scheduleFinishAfterSpeech();
+        if (!this.audioDone) {
+          this.scheduleFinishTurn(2500);
+        }
       }
     }
   }
@@ -363,17 +370,9 @@ class ReyRealtimeWebRTC {
     });
   }
 
-  estimateRemainingPlaybackMs() {
-    const text = this.responseText.trim();
-    const words = text ? text.split(/\s+/).length : 8;
-    // Comfortable spoken English is roughly 2.4 words/sec; add startup/buffer
-    // margin. Bound it so broken events do not hold the UI hostage.
-    return Math.max(2200, Math.min(45000, Math.round((words / 2.4) * 1000 + 1800)));
-  }
-
-  scheduleFinishAfterSpeech() {
+  scheduleFinishTurn(delayMs) {
     if (this.closeTimer) return;
-    this.closeTimer = setTimeout(() => this.finishTurn(), this.estimateRemainingPlaybackMs());
+    this.closeTimer = setTimeout(() => this.finishTurn(), delayMs);
   }
 
   finishTurn() {
