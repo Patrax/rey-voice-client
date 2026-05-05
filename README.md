@@ -73,7 +73,7 @@ OPENAI_REALTIME_VOICE=alloy
 # Compact runtime hints generated from OpenClaw/Memento for voice disambiguation.
 VOICE_CONTEXT_SEED_PATH=voice_context_seed.json
 VOICE_CONTEXT_GENERATED_PATH=~/.openclaw/runtime/rey-voice/voice_context_hints.generated.json
-VOICE_CONTEXT_REFRESH_SECONDS=3600
+VOICE_CONTEXT_REFRESH_SECONDS=86400
 
 WAKE_WORD=hey_jarvis        # OpenWakeWord model name
 WHISPER_MODEL=base.en       # tiny.en, base.en, small.en
