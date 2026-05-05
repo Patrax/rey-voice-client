@@ -81,6 +81,46 @@ class OpenClawAskRequest(BaseModel):
     request: str
 
 
+AUTHORITATIVE_CONTEXT_PATTERNS = (
+    "work in ",
+    "work on ",
+    "continue ",
+    "implement ",
+    "fix ",
+    "debug ",
+    "investigate ",
+    "subagent",
+    "delegate",
+    "spawn ",
+    "repo",
+    "repository",
+    "pull request",
+    "issue ",
+    "rey voice",
+    "rey-voice",
+    "openclaw",
+    "tenpace",
+)
+
+
+def should_use_authoritative_context(text: str) -> bool:
+    """Route durable/project work through the canonical OpenClaw session."""
+    lowered = f" {text.lower()} "
+    return any(pattern in lowered for pattern in AUTHORITATIVE_CONTEXT_PATTERNS)
+
+
+def resolve_authoritative_session_key() -> str:
+    """Resolve the configured delivery target to the authoritative Discord session key."""
+    if config.OPENCLAW_AUTHORITATIVE_SESSION_KEY:
+        return config.OPENCLAW_AUTHORITATIVE_SESSION_KEY
+    if (
+        config.OPENCLAW_DELIVERY_CHANNEL == "discord"
+        and config.OPENCLAW_DELIVERY_TO.startswith("channel:")
+    ):
+        return f"agent:{config.OPENCLAW_AUTHORITATIVE_AGENT_ID}:discord:{config.OPENCLAW_DELIVERY_TO}"
+    return ""
+
+
 VOICE_SYSTEM_PROMPT = """You are responding via voice (text-to-speech). Optimize your responses:
 
 - Be concise and conversational - this will be spoken aloud
@@ -109,12 +149,19 @@ async def ask_openclaw_text(text: str) -> str:
         )
         model = "openclaw"
 
+    authoritative_session_key = resolve_authoritative_session_key() if should_use_authoritative_context(text) else ""
+    agent_id = config.OPENCLAW_AUTHORITATIVE_AGENT_ID if authoritative_session_key else config.OPENCLAW_AGENT_ID
+    session_key = authoritative_session_key or f"agent:{config.OPENCLAW_AGENT_ID}:voice-client"
+
     headers = {
         "Authorization": f"Bearer {config.OPENCLAW_GATEWAY_TOKEN}",
         "Content-Type": "application/json",
-        "x-openclaw-agent-id": config.OPENCLAW_AGENT_ID,
-        "x-openclaw-session-key": f"agent:{config.OPENCLAW_AGENT_ID}:voice-client",
+        "x-openclaw-agent-id": agent_id,
+        "x-openclaw-session-key": session_key,
     }
+    if authoritative_session_key:
+        headers["x-openclaw-authoritative-session-key"] = authoritative_session_key
+        headers["x-openclaw-authoritative-agent-id"] = config.OPENCLAW_AUTHORITATIVE_AGENT_ID
     if config.OPENCLAW_DELIVERY_CHANNEL:
         headers["x-openclaw-message-channel"] = config.OPENCLAW_DELIVERY_CHANNEL
         headers["x-openclaw-channel"] = config.OPENCLAW_DELIVERY_CHANNEL
@@ -142,9 +189,11 @@ async def ask_openclaw_text(text: str) -> str:
         )
         elapsed = time.time() - started
         logger.info(
-            "⏱️ OpenClaw bridge: status=%s model=%s elapsed=%0.2fs",
+            "⏱️ OpenClaw bridge: status=%s model=%s agent=%s authoritative=%s elapsed=%0.2fs",
             response.status_code,
             model,
+            agent_id,
+            bool(authoritative_session_key),
             elapsed,
         )
         response.raise_for_status()
