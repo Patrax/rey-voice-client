@@ -10,6 +10,7 @@ class SettingsManager {
     this.authTokenInput = document.getElementById('authToken');
     this.toggleTokenBtn = document.getElementById('toggleToken');
     this.wakeWordEnabledCheckbox = document.getElementById('wakeWordEnabled');
+    this.realtimeTransportSelect = document.getElementById('realtimeTransport');
     this.hotkeyDisplay = document.getElementById('hotkeyDisplay');
     this.recordHotkeyBtn = document.getElementById('recordHotkey');
     this.clearHotkeyBtn = document.getElementById('clearHotkey');
@@ -67,6 +68,9 @@ class SettingsManager {
     this.serverUrlInput.value = config.serverUrl || '';
     this.authTokenInput.value = config.authToken || '';
     this.wakeWordEnabledCheckbox.checked = config.wakeWordEnabled !== false;
+    if (this.realtimeTransportSelect) {
+      this.realtimeTransportSelect.value = config.realtimeTransport || 'webrtc';
+    }
     
     if (config.hotkey) {
       this.currentHotkey = config.hotkey;
@@ -240,7 +244,8 @@ class SettingsManager {
       transcriptHotkey: this.currentTranscriptHotkey,
       toggleWindowHotkey: this.currentToggleWindowHotkey,
       hotkeyMode: hotkeyMode,
-      wakeWordEnabled: this.wakeWordEnabledCheckbox.checked
+      wakeWordEnabled: this.wakeWordEnabledCheckbox.checked,
+      realtimeTransport: this.realtimeTransportSelect?.value || 'webrtc'
     };
     
     try {

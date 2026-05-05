@@ -20,6 +20,8 @@ A cross-platform Electron app for hands-free voice interaction with Rey. Open it
 
 Default cost is $0 when `VOICE_BACKEND=local` — everything runs locally except optional hosted TTS. `VOICE_BACKEND=openai_realtime` uses OpenAI's Realtime API for speech-to-speech and bridges back into OpenClaw for Rey's memory/tools.
 
+For lowest latency, the Electron client can use OpenAI Realtime over browser WebRTC. The server mints short-lived Realtime client secrets and relays `ask_openclaw` tool calls, but live microphone and speaker audio travel directly between Electron and OpenAI.
+
 ## Quick Start
 
 ### 1. Server Setup (one-time, on ubuntuserver)
@@ -84,6 +86,15 @@ WHISPER_MODEL=base.en       # tiny.en, base.en, small.en
 - `local`: wake word → local faster-whisper → OpenClaw → ElevenLabs/OpenAI TTS. This preserves the original private/offline-ish pipeline.
 - `openai_realtime`: wake word → OpenAI Realtime speech-to-speech. The realtime model gets an `ask_openclaw` tool, so requests that need Rey's real context/actions are routed back through OpenClaw instead of becoming generic ChatGPT voice.
 
+### Realtime transport modes
+
+The client has a separate **Realtime Transport** setting:
+
+- `webrtc` (default): Electron gets an ephemeral token from `POST /realtime/session`, opens a direct WebRTC connection to OpenAI, streams mic audio live, and receives streamed speech back. Tool calls go through `POST /openclaw/ask` on Rey's server.
+- `backend`: fallback mode. The client keeps the older WebSocket path where the server captures a whole utterance and runs the backend Realtime bridge.
+
+Keep `backend` available as a safe fallback if WebRTC negotiation, device permissions, or corporate networks get in the way.
+
 ### Runtime voice context hints
 
 The Realtime layer loads a compact context primer so common workstreams are parsed correctly without injecting full memory. For example, it can treat "taxes" as Patricio's tax filing work rather than "Texas", and route topics like Tenpace or humanslivehere back through OpenClaw.
@@ -116,7 +127,8 @@ npm start
 - ⌨️ **Push-to-talk** shortcut (Cmd+Shift+R)
 - 🎨 **Visual feedback** — Shows listening/thinking/speaking states
 - 🖥️ **System tray** — Runs quietly in background
-- 🔒 **Private** — All processing on your server
+- 🔒 **Private control plane** — OpenClaw memory/tools stay on your server
+- ⚡ **Low-latency WebRTC mode** — Direct OpenAI Realtime audio path with server-side ephemeral tokens
 
 ## Wake Words
 

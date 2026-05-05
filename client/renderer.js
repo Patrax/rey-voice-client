@@ -49,6 +49,14 @@ class ReyVoiceClient {
     this.serverUrl = config.serverUrl;
     this.authToken = config.authToken || '';
     this.wakeWordEnabled = config.wakeWordEnabled !== false; // default true
+    this.realtimeTransport = config.realtimeTransport || 'webrtc';
+    this.realtime = new ReyRealtimeWebRTC({
+      getServerBaseUrl: () => this.getHttpServerBaseUrl(),
+      getAuthToken: () => this.authToken,
+      getMediaStream: () => this.mediaStream,
+      onEvent: (event) => this.handleRealtimeEvent(event),
+      onError: (err) => this.handleRealtimeError(err),
+    });
     
     // Set up event listeners
     window.electronAPI.onPushToTalk(() => this.handlePushToTalk());
@@ -133,8 +141,9 @@ class ReyVoiceClient {
             }
             this.updateVisualizer(float32);
             
-            // Send to server if connected
-            if (this.socket?.readyState === WebSocket.OPEN) {
+            // Send to server for wake-word/backend modes. In WebRTC turns, mic audio
+            // goes directly to OpenAI and should not also feed the server pipeline.
+            if (this.socket?.readyState === WebSocket.OPEN && !this.realtime?.isActive()) {
               this.socket.send(event.data.data);
             }
           }
@@ -180,7 +189,8 @@ class ReyVoiceClient {
         // Send wake word preference to server
         this.socket.send(JSON.stringify({ 
           type: 'config', 
-          wakeWordEnabled: this.wakeWordEnabled 
+          wakeWordEnabled: this.wakeWordEnabled,
+          realtimeTransport: this.realtimeTransport,
         }));
         
         // Start keepalive pings every 30 seconds
@@ -283,6 +293,9 @@ class ReyVoiceClient {
       case 'audio_response':
         this.playAudio(this.base64ToArrayBuffer(data.audio), data.mime || 'audio/wav');
         break;
+      case 'webrtc_start':
+        this.startRealtimeTurn(data.reason || 'wake');
+        break;
       case 'notification':
         // Incoming notification from inbox
         console.log('Notification:', data);
@@ -301,6 +314,87 @@ class ReyVoiceClient {
         // Ignore keepalive messages
         break;
     }
+  }
+
+  getHttpServerBaseUrl() {
+    const url = new URL(this.serverUrl);
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+    url.pathname = url.pathname.replace(/\/voice\/?$/, '');
+    url.search = '';
+    return url.toString().replace(/\/$/, '');
+  }
+
+  useWebRTCRealtime() {
+    return this.realtimeTransport === 'webrtc' && Boolean(this.realtime);
+  }
+
+  async startRealtimeTurn(reason = 'manual') {
+    if (!this.useWebRTCRealtime()) return;
+    if (this.isPlayingAudio) {
+      await this.realtime.interrupt();
+      this.isPlayingAudio = false;
+    }
+    await this.realtime.start({ reason });
+  }
+
+  async stopRealtimeTurn() {
+    if (!this.useWebRTCRealtime()) return false;
+    if (this.realtime?.isActive()) {
+      await this.realtime.stopListening();
+      window.electronAPI.listeningStopped();
+      return true;
+    }
+    return false;
+  }
+
+  handleRealtimeEvent(event) {
+    switch (event.type) {
+      case 'state':
+        this.setState(event.state, event.message);
+        if (event.state === 'waiting') {
+          this.isPlayingAudio = false;
+          window.electronAPI.listeningStopped();
+        }
+        break;
+      case 'user_transcript':
+        // Store final transcript once the response arrives to keep ordering clean.
+        this.pendingRealtimeUserText = event.text;
+        break;
+      case 'partial_response':
+        this.message.textContent = event.text.substring(0, 80) + (event.text.length > 80 ? '...' : '');
+        break;
+      case 'response':
+        this.message.textContent = event.rey_text.substring(0, 80) + (event.rey_text.length > 80 ? '...' : '');
+        this.setExpression(this.detectExpression(event.rey_text));
+        if (event.user_text) this.addToTranscript('user', event.user_text);
+        this.addToTranscript('rey', event.rey_text);
+        this.lastResponse = event.rey_text;
+        this.isPlayingAudio = true;
+        this.updateReplayButton();
+        console.log(`Realtime WebRTC turn completed in ${event.elapsed_ms}ms`);
+        break;
+    }
+  }
+
+  handleRealtimeError(err) {
+    console.error('Realtime WebRTC error:', err);
+    this.showError(`Realtime error: ${err.message}`);
+    this.setState('waiting', 'Ready');
+    window.electronAPI.listeningStopped();
+  }
+
+  detectExpression(text) {
+    const textLower = (text || '').toLowerCase();
+    if (['sorry', 'unfortunately', 'sad', 'bad news', "can't", 'unable'].some(word => textLower.includes(word))) return 'sad';
+    if (['love', 'heart', '❤', '💕', 'amazing', 'wonderful'].some(word => textLower.includes(word))) return 'love';
+    if (['haha', 'lol', 'funny', '😂', '🤣', 'hilarious', 'joke'].some(word => textLower.includes(word))) return 'laughing';
+    if (['wow', 'whoa', 'amazing', 'incredible', '!!'].some(word => textLower.includes(word))) return 'surprised';
+    if (['hmm', 'interesting', 'let me think', 'not sure', 'maybe'].some(word => textLower.includes(word))) return 'confused';
+    if (['great', 'awesome', 'perfect', 'excellent', 'yay', '🎉'].some(word => textLower.includes(word))) return 'excited';
+    if (['good', 'nice', 'sure', 'okay', 'happy', '😊', '🙂'].some(word => textLower.includes(word))) return 'happy';
+    if ([';)', 'wink', 'heh', 'between us'].some(word => textLower.includes(word))) return 'wink';
+    if (['🦞', 'lobster'].some(word => textLower.includes(word))) return 'excited';
+    return 'happy';
   }
 
   setState(state, message) {
@@ -424,22 +518,32 @@ class ReyVoiceClient {
     }
   }
 
-  handlePushToTalk() {
+  async handlePushToTalk() {
+    if (this.useWebRTCRealtime()) {
+      if (this.realtime?.isActive()) {
+        await this.stopRealtimeTurn();
+      } else {
+        await this.startRealtimeTurn('manual');
+      }
+      return;
+    }
     if (this.socket?.readyState !== WebSocket.OPEN) return;
-    
     this.socket.send(JSON.stringify({ type: 'push_to_talk' }));
   }
 
-  handlePushToTalkStart() {
+  async handlePushToTalkStart() {
+    if (this.useWebRTCRealtime()) {
+      await this.startRealtimeTurn('manual');
+      return;
+    }
     if (this.socket?.readyState !== WebSocket.OPEN) return;
-    
     // Start listening immediately
     this.socket.send(JSON.stringify({ type: 'push_to_talk_start' }));
   }
 
-  handlePushToTalkStop() {
+  async handlePushToTalkStop() {
+    if (await this.stopRealtimeTurn()) return;
     if (this.socket?.readyState !== WebSocket.OPEN) return;
-    
     // Stop listening and process immediately
     this.socket.send(JSON.stringify({ type: 'push_to_talk_stop' }));
   }

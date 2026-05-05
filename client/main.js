@@ -15,7 +15,8 @@ function loadConfig() {
     replayHotkey: '',
     transcriptHotkey: '',
     toggleWindowHotkey: '',
-    wakeWordEnabled: true
+    wakeWordEnabled: true,
+    realtimeTransport: 'webrtc'
   };
   
   if (fs.existsSync(configPath)) {
@@ -105,7 +106,7 @@ function createSettingsWindow() {
 
   settingsWindow = new BrowserWindow({
     width: 480,
-    height: 520,
+    height: 600,
     resizable: false,
     minimizable: false,
     maximizable: false,

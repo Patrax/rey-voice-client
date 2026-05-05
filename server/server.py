@@ -33,6 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import config
 from voice_context import load_voice_context_data, refresh_voice_context_hints
+from realtime_bridge import build_voice_instructions
 
 # Lazy imports for heavy dependencies
 openwakeword = None
@@ -71,6 +72,148 @@ def require_http_token(authorization: str | None) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+class RealtimeSessionRequest(BaseModel):
+    transport: str = "webrtc"
+
+
+class OpenClawAskRequest(BaseModel):
+    request: str
+
+
+VOICE_SYSTEM_PROMPT = """You are responding via voice (text-to-speech). Optimize your responses:
+
+- Be concise and conversational - this will be spoken aloud
+- NO markdown formatting (no **, ##, -, bullets, etc.)
+- NO lists - use natural flowing sentences instead
+- Abbreviate where natural: "3 PM" not "3:00 PM", "tomorrow" not "Tuesday, February 10th"
+- For calendar: ONLY read from "pjeril@gmail.com" calendar, ignore other linked calendars
+- For calendar events: just say the key info (time + brief description), skip full titles
+- For multiple items: summarize or mention count ("you have 3 meetings") rather than reading each
+- Numbers: say "about 50" not "approximately 49.7"
+- Keep responses under 2-3 sentences when possible
+- Sound natural, like talking to a friend
+- You are the fast voice agent. For complex coding, repo, debugging, long-context, or high-stakes analysis, delegate to the main/Codex-backed OpenClaw agents when appropriate instead of doing slow deep work inline. Give Patricio a brief spoken acknowledgement while delegated work runs if the result will take time."""
+
+
+async def ask_openclaw_text(text: str) -> str:
+    """Send text to OpenClaw using the voice-optimized agent/session."""
+    import time
+
+    model = config.OPENCLAW_MODEL or "openclaw"
+    if not model.startswith("openclaw"):
+        logger.warning(
+            "Ignoring invalid OPENCLAW_MODEL=%r for Gateway chat endpoint; using 'openclaw'",
+            model,
+        )
+        model = "openclaw"
+
+    started = time.time()
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(
+            f"{config.OPENCLAW_GATEWAY_URL}/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENCLAW_GATEWAY_TOKEN}",
+                "Content-Type": "application/json",
+                "x-openclaw-agent-id": config.OPENCLAW_AGENT_ID,
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": VOICE_SYSTEM_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                "user": "voice-client",
+                "stream": False,
+            },
+        )
+        elapsed = time.time() - started
+        logger.info(
+            "⏱️ OpenClaw bridge: status=%s model=%s elapsed=%0.2fs",
+            response.status_code,
+            model,
+            elapsed,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
+
+
+@app.post("/realtime/session")
+async def create_realtime_session(
+    body: RealtimeSessionRequest,
+    authorization: str | None = Header(None),
+):
+    """Mint an ephemeral OpenAI Realtime session for browser WebRTC."""
+    require_http_token(authorization)
+    if not config.OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured")
+
+    payload = {
+        "model": config.OPENAI_REALTIME_MODEL,
+        "voice": config.OPENAI_REALTIME_VOICE,
+        "instructions": build_voice_instructions(),
+        "modalities": ["text", "audio"],
+        "input_audio_transcription": {"model": config.OPENAI_REALTIME_TRANSCRIPTION_MODEL},
+        "turn_detection": {
+            "type": "server_vad",
+            "threshold": 0.5,
+            "prefix_padding_ms": 300,
+            "silence_duration_ms": 650,
+            "create_response": True,
+        },
+        "tools": [
+            {
+                "type": "function",
+                "name": "ask_openclaw",
+                "description": "Ask Rey's OpenClaw brain to answer or perform a task with full private context, memory, tools, files, calendar, and home-server access.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "request": {
+                            "type": "string",
+                            "description": "The user's request, rewritten clearly for OpenClaw while preserving intent and relevant context.",
+                        }
+                    },
+                    "required": ["request"],
+                    "additionalProperties": False,
+                },
+            }
+        ],
+        "tool_choice": "auto",
+        "temperature": config.OPENAI_REALTIME_TEMPERATURE,
+    }
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/realtime/sessions",
+            headers={
+                "Authorization": f"Bearer {config.OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+                "OpenAI-Beta": "realtime=v1",
+            },
+            json=payload,
+        )
+        if response.status_code >= 400:
+            logger.error("Realtime session creation failed: %s %s", response.status_code, response.text[:500])
+            raise HTTPException(status_code=502, detail="OpenAI Realtime session creation failed")
+        data = response.json()
+        data.setdefault("model", config.OPENAI_REALTIME_MODEL)
+        return data
+
+
+@app.post("/openclaw/ask")
+async def ask_openclaw_route(
+    body: OpenClawAskRequest,
+    authorization: str | None = Header(None),
+):
+    """Private relay used by browser-side Realtime tool calls."""
+    require_http_token(authorization)
+    request = body.request.strip()
+    if not request:
+        raise HTTPException(status_code=400, detail="request is required")
+    return {"response": await ask_openclaw_text(request)}
+
+
 @app.on_event("startup")
 async def startup_refresh_voice_context() -> None:
     """Warm the generated hints cache without blocking server startup."""
@@ -101,6 +244,7 @@ class VoiceSession:
         self.tts_voice = None
         self.wake_word_cooldown = False
         self.wake_word_enabled = True  # Can be disabled by client
+        self.client_realtime_transport = "backend"
         # Session management for conversation continuity
         self.session_id = str(uuid.uuid4())
         self.conversation_history = []
@@ -250,44 +394,7 @@ class VoiceSession:
 - You are the fast voice agent. For complex coding, repo, debugging, long-context, or high-stakes analysis, delegate to the main/Codex-backed OpenClaw agents when appropriate instead of doing slow deep work inline. Give Patricio a brief spoken acknowledgement while delegated work runs if the result will take time."""
 
         async def do_request():
-            import time
-            model = config.OPENCLAW_MODEL or "openclaw"
-            if not model.startswith("openclaw"):
-                logger.warning(
-                    "Ignoring invalid OPENCLAW_MODEL=%r for Gateway chat endpoint; using 'openclaw'",
-                    model,
-                )
-                model = "openclaw"
-
-            started = time.time()
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{config.OPENCLAW_GATEWAY_URL}/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {config.OPENCLAW_GATEWAY_TOKEN}",
-                        "Content-Type": "application/json",
-                        "x-openclaw-agent-id": config.OPENCLAW_AGENT_ID,
-                    },
-                    json={
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": voice_system_prompt},
-                            {"role": "user", "content": text}
-                        ],
-                        "user": "voice-client",  # Stable session key - enables full workspace context!
-                        "stream": False,
-                    }
-                )
-                elapsed = time.time() - started
-                logger.info(
-                    "⏱️ OpenClaw bridge: status=%s model=%s elapsed=%0.2fs",
-                    response.status_code,
-                    model,
-                    elapsed,
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data["choices"][0]["message"]["content"]
+            return await ask_openclaw_text(text)
         
         # Run request with keepalive pings to prevent Cloudflare timeout
         request_task = asyncio.create_task(do_request())
@@ -369,9 +476,16 @@ class VoiceSession:
             if self.wake_word_enabled and not self.wake_word_cooldown and self.process_wake_word(audio_chunk):
                 # Reset wake word model to clear internal buffers
                 self.oww_model.reset()
-                await self.send_state(State.LISTENING, "I'm listening...")
-                self.audio_buffer = []
-                self.silence_frames = 0
+                if self.client_realtime_transport == "webrtc":
+                    self.wake_word_cooldown = True
+                    await self.websocket.send_json({"type": "webrtc_start", "reason": "wake"})
+                    await asyncio.sleep(1.0)
+                    self.oww_model.reset()
+                    self.wake_word_cooldown = False
+                else:
+                    await self.send_state(State.LISTENING, "I'm listening...")
+                    self.audio_buffer = []
+                    self.silence_frames = 0
 
         elif self.state == State.LISTENING:
             self.audio_buffer.append(audio_chunk)
@@ -563,9 +677,14 @@ async def voice_endpoint(websocket: WebSocket):
                     if "wakeWordEnabled" in msg:
                         session.wake_word_enabled = msg["wakeWordEnabled"]
                         logger.info(f"Wake word {'enabled' if session.wake_word_enabled else 'disabled'}")
+                    if "realtimeTransport" in msg:
+                        session.client_realtime_transport = msg["realtimeTransport"] or "backend"
+                        logger.info("Client realtime transport: %s", session.client_realtime_transport)
                 elif msg.get("type") == "push_to_talk":
                     # Push to talk: immediately start listening (bypass wake word)
-                    if session.state == State.WAITING_FOR_WAKE_WORD:
+                    if session.client_realtime_transport == "webrtc":
+                        await websocket.send_json({"type": "webrtc_start", "reason": "manual"})
+                    elif session.state == State.WAITING_FOR_WAKE_WORD:
                         await session.send_state(State.LISTENING, "I'm listening...")
                         session.audio_buffer = []
                         session.silence_frames = 0
