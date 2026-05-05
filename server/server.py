@@ -227,6 +227,7 @@ class VoiceSession:
 - Sound natural, like talking to a friend"""
 
         async def do_request():
+            import time
             model = config.OPENCLAW_MODEL or "openclaw"
             if not model.startswith("openclaw"):
                 logger.warning(
@@ -235,6 +236,7 @@ class VoiceSession:
                 )
                 model = "openclaw"
 
+            started = time.time()
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
                     f"{config.OPENCLAW_GATEWAY_URL}/v1/chat/completions",
@@ -252,6 +254,13 @@ class VoiceSession:
                         "user": "voice-client",  # Stable session key - enables full workspace context!
                         "stream": False,
                     }
+                )
+                elapsed = time.time() - started
+                logger.info(
+                    "⏱️ OpenClaw bridge: status=%s model=%s elapsed=%0.2fs",
+                    response.status_code,
+                    model,
+                    elapsed,
                 )
                 response.raise_for_status()
                 data = response.json()

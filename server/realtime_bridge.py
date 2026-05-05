@@ -11,6 +11,7 @@ import base64
 import inspect
 import json
 import logging
+import time
 import wave
 from dataclasses import dataclass
 from io import BytesIO
@@ -175,7 +176,13 @@ async def run_realtime_turn(
                     output = "I could not read the tool request. Please ask again."
                 else:
                     logger.info("Realtime calling OpenClaw: %s", request[:160])
+                    started = time.time()
                     output = await ask_openclaw(request)
+                    logger.info(
+                        "⏱️ Realtime tool ask_openclaw elapsed=%0.2fs chars=%s",
+                        time.time() - started,
+                        len(output),
+                    )
             except Exception as exc:
                 logger.exception("OpenClaw tool call failed")
                 output = f"OpenClaw tool call failed: {exc}"
