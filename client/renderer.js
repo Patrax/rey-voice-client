@@ -142,9 +142,12 @@ class ReyVoiceClient {
             }
             this.updateVisualizer(float32);
             
-            // Send to server for wake-word/backend modes. In WebRTC turns, mic audio
-            // goes directly to OpenAI and should not also feed the server pipeline.
-            if (this.socket?.readyState === WebSocket.OPEN && !this.realtime?.isActive()) {
+            // During WebRTC setup, buffer local PCM until the peer connection is
+            // ready so speech that starts right after F19 is not lost. Once the
+            // peer is ready, mic audio goes directly over the WebRTC media track.
+            if (this.realtime?.isActive()) {
+              this.realtime.capturePcmChunk(event.data.data);
+            } else if (this.socket?.readyState === WebSocket.OPEN) {
               this.socket.send(event.data.data);
             }
           }

@@ -30,6 +30,9 @@ class ReyRealtimeWebRTC {
     this.userTranscript = '';
     this.responseText = '';
     this.toolArguments = new Map();
+    this.preReadyPcmChunks = [];
+    this.preReadyPcmBytes = 0;
+    this.maxPreReadyPcmBytes = 16000 * 2 * 12; // 12s of mono PCM16 @ 16kHz
     this.startedAt = 0;
     this.turnReason = 'manual';
     this.closeTimer = null;
@@ -57,6 +60,8 @@ class ReyRealtimeWebRTC {
     this.userTranscript = '';
     this.responseText = '';
     this.toolArguments.clear();
+    this.preReadyPcmChunks = [];
+    this.preReadyPcmBytes = 0;
     this.startedAt = performance.now();
     this.turnReason = reason;
     this.clearTimers();
@@ -68,7 +73,7 @@ class ReyRealtimeWebRTC {
     }, 70000);
 
     try {
-      this.onEvent?.({ type: 'state', state: 'listening', message: reason === 'wake' ? "I'm listening..." : 'Realtime listening...' });
+      this.onEvent?.({ type: 'state', state: 'listening', message: reason === 'wake' ? "I'm listening..." : 'Connecting mic...' });
 
       const session = await this.createSession(reason);
       const clientSecret = session?.client_secret?.value;
@@ -103,13 +108,17 @@ class ReyRealtimeWebRTC {
         }
       };
 
-      // Use a dedicated WebRTC mic stream for each turn. The app's existing
-      // stream is also being consumed by the AudioWorklet/server wake pipeline;
-      // keeping Realtime isolated avoids stale/shared track behavior.
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-      this.ownsLocalStream = true;
+      // Use the existing app mic stream for the WebRTC media track so Electron
+      // doesn't need to juggle two simultaneous mic captures. The renderer also
+      // buffers AudioWorklet PCM while the peer connection is negotiating so
+      // speech that starts immediately after F19 is not lost.
+      this.localStream = this.getMediaStream();
+      if (!this.localStream) {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        this.ownsLocalStream = true;
+      }
       this.inputTrack = this.localStream.getAudioTracks()[0];
       if (!this.inputTrack) throw new Error('No microphone audio track available');
       this.inputTrack.enabled = true;
@@ -162,6 +171,8 @@ class ReyRealtimeWebRTC {
     this.inputTrack = null;
     this.localStream = null;
     this.ownsLocalStream = false;
+    this.preReadyPcmChunks = [];
+    this.preReadyPcmBytes = 0;
   }
 
   clearTimers() {
@@ -236,11 +247,49 @@ class ReyRealtimeWebRTC {
       },
     });
 
+    this.flushPreReadyAudio();
+    this.onEvent?.({ type: 'state', state: 'listening', message: 'Listening... speak now' });
+
     if (this.pendingStop) {
-      // The user released push-to-talk before negotiation finished. Process as
-      // soon as the data channel is usable instead of getting stuck in Thinking.
-      setTimeout(() => this.requestResponse(), 100);
+      // The user released push-to-talk before negotiation finished. Give any
+      // flushed pre-ready audio a moment to produce speech_started, then submit.
+      setTimeout(() => this.requestResponse(), 800);
     }
+  }
+
+
+  capturePcmChunk(arrayBuffer) {
+    if (!this.active || this.isReady()) return;
+    const copy = arrayBuffer.slice(0);
+    this.preReadyPcmChunks.push(copy);
+    this.preReadyPcmBytes += copy.byteLength;
+    while (this.preReadyPcmBytes > this.maxPreReadyPcmBytes && this.preReadyPcmChunks.length > 0) {
+      const dropped = this.preReadyPcmChunks.shift();
+      this.preReadyPcmBytes -= dropped.byteLength;
+    }
+  }
+
+  flushPreReadyAudio() {
+    if (!this.isReady() || this.preReadyPcmChunks.length === 0) return;
+    console.log(`Flushing ${this.preReadyPcmChunks.length} pre-ready PCM chunks to Realtime`);
+    for (const chunk of this.preReadyPcmChunks) {
+      this.send({
+        type: 'input_audio_buffer.append',
+        audio: this.arrayBufferToBase64(chunk),
+      });
+    }
+    this.preReadyPcmChunks = [];
+    this.preReadyPcmBytes = 0;
+  }
+
+  arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
   }
 
   handleRealtimeEvent(event) {
