@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "purpose": "Compact voice recognition and routing hints for OpenAI Realtime. Keep this top-level only; do not include full project details.",
+  "hints": [
+    {
+      "name": "Tenpace",
+      "aliases": ["ten pace", "tenbase", "10 pace", "10 days"],
+      "meaning": "Patricio's AI-native software-team/workflow product and company project.",
+      "route_to_openclaw": true
+    },
+    {
+      "name": "humanslivehere.com",
+      "aliases": ["humans live here", "humanslivehere", "humans livehere"],
+      "meaning": "Patricio's expressive old-internet-style community/place project.",
+      "route_to_openclaw": true
+    },
+    {
+      "name": "taxes",
+      "aliases": ["tax work", "taxes work", "tax filing", "the taxes work", "Texas"],
+      "meaning": "Patricio's personal 2025 US/Canada tax filing work; not the US state Texas unless geography/travel clearly indicates that.",
+      "route_to_openclaw": true
+    },
+    {
+      "name": "Rey Voice",
+      "aliases": ["voice client", "voice server", "Rey server", "voice stuff"],
+      "meaning": "The local Rey Voice Assistant project connected to OpenClaw and OpenAI Realtime.",
+      "route_to_openclaw": true
+    },
+    {
+      "name": "OpenClaw",
+      "aliases": ["open claw", "claw", "the gateway"],
+      "meaning": "Patricio's private assistant framework and home-server brain that Rey runs on.",
+      "route_to_openclaw": true
+    }
+  ]
+}

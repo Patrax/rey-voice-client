@@ -15,6 +15,7 @@ import time
 import wave
 from dataclasses import dataclass
 from io import BytesIO
+from pathlib import Path
 from typing import Awaitable, Callable
 
 import websockets
@@ -36,9 +37,39 @@ class RealtimeResult:
     audio_wav: bytes
 
 
-VOICE_INSTRUCTIONS = """You are Rey, Patricio's personal assistant, speaking aloud.
+def load_voice_context_hints() -> str:
+    """Load compact recognition/routing hints for the realtime voice layer."""
+    path = Path(config.VOICE_CONTEXT_HINTS_PATH)
+    if not path.is_absolute():
+        path = Path(__file__).with_name(config.VOICE_CONTEXT_HINTS_PATH)
 
-Recognition hint: Patricio often says "Tenpace" (pronounced "ten pace"), the product/company project. Do not reinterpret that as "Tenbase" or "10 days" unless the surrounding context clearly means a duration.
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        return ""
+    except Exception:
+        logger.warning("Could not load voice context hints from %s", path, exc_info=True)
+        return ""
+
+    lines = []
+    for hint in data.get("hints", []):
+        name = hint.get("name")
+        meaning = hint.get("meaning")
+        aliases = ", ".join(hint.get("aliases") or [])
+        route = " Call ask_openclaw when mentioned." if hint.get("route_to_openclaw") else ""
+        if name and meaning:
+            alias_text = f" Aliases/mishearings: {aliases}." if aliases else ""
+            lines.append(f"- {name}: {meaning}{alias_text}{route}")
+
+    if not lines:
+        return ""
+
+    return "Voice context primer. Use these only for disambiguation and routing; do not recite them:\n" + "\n".join(lines)
+
+
+VOICE_INSTRUCTIONS_TEMPLATE = """You are Rey, Patricio's personal assistant, speaking aloud.
+
+{voice_context_hints}
 
 You are the live voice layer. OpenClaw is the private home-server brain.
 Use the ask_openclaw tool whenever a request needs Rey's memory, workspace,
@@ -55,6 +86,12 @@ Voice style:
 - keep spoken answers short unless Patricio asks for detail
 - do not claim to have performed actions unless OpenClaw did them
 """
+
+
+def build_voice_instructions() -> str:
+    return VOICE_INSTRUCTIONS_TEMPLATE.format(
+        voice_context_hints=load_voice_context_hints().strip()
+    )
 
 
 def pcm16_to_wav(pcm: bytes, sample_rate: int = 24000) -> bytes:
@@ -121,7 +158,7 @@ async def run_realtime_turn(
             "type": "session.update",
             "session": {
                 "modalities": ["text", "audio"],
-                "instructions": VOICE_INSTRUCTIONS,
+                "instructions": build_voice_instructions(),
                 "voice": config.OPENAI_REALTIME_VOICE,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
