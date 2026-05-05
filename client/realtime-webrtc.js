@@ -28,6 +28,7 @@ class ReyRealtimeWebRTC {
     this.responseText = '';
     this.toolArguments = new Map();
     this.startedAt = 0;
+    this.turnReason = 'manual';
     this.closeTimer = null;
     this.watchdogTimer = null;
   }
@@ -52,6 +53,7 @@ class ReyRealtimeWebRTC {
     this.responseText = '';
     this.toolArguments.clear();
     this.startedAt = performance.now();
+    this.turnReason = reason;
     this.clearTimers();
     this.watchdogTimer = setTimeout(() => {
       if (this.active) {
@@ -244,9 +246,9 @@ class ReyRealtimeWebRTC {
     }
 
     if (type === 'input_audio_buffer.speech_stopped') {
-      // Wake-word turns do not have a key-up event. With create_response=false,
-      // this is our clean signal to ask Realtime to answer once VAD sees the end.
-      if (!this.pendingStop) {
+      // Toggle push-to-talk must wait for Patricio's second F19 press. Only
+      // wake-word turns auto-submit when server VAD hears the end of speech.
+      if (this.turnReason === 'wake' && !this.pendingStop) {
         setTimeout(() => this.requestResponse(), 100);
       }
       return;
