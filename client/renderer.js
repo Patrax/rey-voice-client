@@ -35,6 +35,7 @@ class ReyVoiceClient {
     this.transcript = this.loadTranscript();
     this.lastResponse = null;
     this.lastAudio = null;
+    this.lastAudioMime = 'audio/mpeg';
     
     this.init();
   }
@@ -279,6 +280,9 @@ class ReyVoiceClient {
       case 'error':
         this.showError(data.message);
         break;
+      case 'audio_response':
+        this.playAudio(this.base64ToArrayBuffer(data.audio), data.mime || 'audio/wav');
+        break;
       case 'notification':
         // Incoming notification from inbox
         console.log('Notification:', data);
@@ -366,10 +370,19 @@ class ReyVoiceClient {
     }
   }
 
-  async playAudio(data) {
+  base64ToArrayBuffer(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  async playAudio(data, mimeType = 'audio/mpeg') {
     try {
       // Handle both Blob and ArrayBuffer
-      const blob = data instanceof Blob ? data : new Blob([data], { type: 'audio/mpeg' });
+      const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
       
       // Store for replay (clone the data)
       if (data instanceof ArrayBuffer) {
@@ -377,6 +390,7 @@ class ReyVoiceClient {
       } else if (data instanceof Blob) {
         this.lastAudio = await data.arrayBuffer();
       }
+      this.lastAudioMime = mimeType;
       
       const url = URL.createObjectURL(blob);
       
@@ -580,7 +594,7 @@ class ReyVoiceClient {
     
     if (this.lastAudio) {
       // Replay stored audio
-      this.playAudio(this.lastAudio);
+      this.playAudio(this.lastAudio, this.lastAudioMime);
     } else if (this.lastResponse) {
       // Request re-synthesis from server
       if (this.socket?.readyState === WebSocket.OPEN) {

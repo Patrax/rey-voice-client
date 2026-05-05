@@ -18,7 +18,7 @@ A cross-platform Electron app for hands-free voice interaction with Rey. Open it
 └─────────────────────────────────┘         └─────────────────────────────────────┘
 ```
 
-**Cost: $0** — Everything runs locally on your server.
+Default cost is $0 when `VOICE_BACKEND=local` — everything runs locally except optional hosted TTS. `VOICE_BACKEND=openai_realtime` uses OpenAI's Realtime API for speech-to-speech and bridges back into OpenClaw for Rey's memory/tools.
 
 ## Quick Start
 
@@ -60,9 +60,24 @@ npm run build:linux  # Linux
 ```bash
 OPENCLAW_GATEWAY_URL=http://127.0.0.1:18789
 OPENCLAW_GATEWAY_TOKEN=your_token_here
+OPENCLAW_AGENT_ID=main
+
+# Voice backend: local or openai_realtime
+VOICE_BACKEND=local
+
+# Required for VOICE_BACKEND=openai_realtime
+OPENAI_API_KEY=sk-...
+OPENAI_REALTIME_MODEL=gpt-realtime
+OPENAI_REALTIME_VOICE=alloy
+
 WAKE_WORD=hey_jarvis        # OpenWakeWord model name
 WHISPER_MODEL=base.en       # tiny.en, base.en, small.en
 ```
+
+### Voice backend modes
+
+- `local`: wake word → local faster-whisper → OpenClaw → ElevenLabs/OpenAI TTS. This preserves the original private/offline-ish pipeline.
+- `openai_realtime`: wake word → OpenAI Realtime speech-to-speech. The realtime model gets an `ask_openclaw` tool, so requests that need Rey's real context/actions are routed back through OpenClaw instead of becoming generic ChatGPT voice.
 
 ### Client
 

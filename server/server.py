@@ -12,6 +12,7 @@ Clients connect via WebSocket and stream audio.
 """
 
 import asyncio
+import base64
 import io
 import json
 import logging
@@ -351,8 +352,55 @@ class VoiceSession:
             if len(self.audio_buffer) > (config.SAMPLE_RATE / config.CHUNK_SIZE * 15):
                 await self.process_speech()
 
+    async def process_speech_openai_realtime(self, audio_data: np.ndarray, timings: dict, pipeline_start: float):
+        """Process speech with OpenAI Realtime while exposing OpenClaw as a tool."""
+        import time
+        from realtime_bridge import run_realtime_turn
+
+        await self.send_state(State.PROCESSING, "Listening through OpenAI...")
+        audio_pcm16 = (np.clip(audio_data, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
+
+        async def keepalive():
+            await self.websocket.send_json({"type": "keepalive", "status": "realtime"})
+
+        t0 = time.time()
+        result = await run_realtime_turn(
+            input_pcm16=audio_pcm16,
+            ask_openclaw=self.ask_openclaw,
+            keepalive=keepalive,
+        )
+        timings["openai_realtime"] = time.time() - t0
+
+        response = result.rey_text or "I heard you, but I didn't get a spoken response back."
+        user_text = result.user_text or "[voice input]"
+        logger.info(f"Patricio (Realtime): {user_text}")
+        logger.info(f"Rey (Realtime): {response}")
+
+        expression = self.detect_expression(response)
+        await self.websocket.send_json({
+            "type": "response",
+            "user_text": user_text,
+            "rey_text": response,
+            "expression": expression,
+        })
+
+        if result.audio_wav:
+            await self.send_state(State.SPEAKING, response[:50] + "...")
+            await self.websocket.send_json({
+                "type": "audio_response",
+                "mime": "audio/wav",
+                "audio": base64.b64encode(result.audio_wav).decode("ascii"),
+            })
+
+        timings["total"] = time.time() - pipeline_start
+        logger.info(
+            "⏱️ Realtime timing: OpenAI=%0.2fs | Total=%0.2fs",
+            timings["openai_realtime"],
+            timings["total"],
+        )
+
     async def process_speech(self):
-        """Process captured speech: transcribe, query OpenClaw, respond."""
+        """Process captured speech: transcribe/query/respond via the configured backend."""
         import time
         timings = {}
         await self.send_state(State.PROCESSING, "Thinking...")
@@ -373,6 +421,10 @@ class VoiceSession:
                 self.oww_model.reset()
                 self.wake_word_cooldown = False
                 await self.send_state(State.WAITING_FOR_WAKE_WORD, "Didn't hear anything")
+                return
+
+            if config.VOICE_BACKEND == "openai_realtime":
+                await self.process_speech_openai_realtime(audio_data, timings, pipeline_start)
                 return
             
             # Transcribe
