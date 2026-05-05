@@ -20,29 +20,45 @@ class ReyRealtimeWebRTC {
     this.inputTrack = null;
     this.active = false;
     this.awaitingResponse = false;
+    this.pendingStop = false;
+    this.responseDone = false;
+    this.audioDone = false;
+    this.delivered = false;
     this.userTranscript = '';
     this.responseText = '';
     this.toolArguments = new Map();
     this.startedAt = 0;
     this.closeTimer = null;
+    this.watchdogTimer = null;
   }
 
   isActive() {
     return this.active;
   }
 
+  isReady() {
+    return this.dc?.readyState === 'open';
+  }
+
   async start({ reason = 'manual' } = {}) {
     if (this.active) return;
     this.active = true;
     this.awaitingResponse = false;
+    this.pendingStop = false;
+    this.responseDone = false;
+    this.audioDone = false;
+    this.delivered = false;
     this.userTranscript = '';
     this.responseText = '';
     this.toolArguments.clear();
     this.startedAt = performance.now();
-    if (this.closeTimer) {
-      clearTimeout(this.closeTimer);
-      this.closeTimer = null;
-    }
+    this.clearTimers();
+    this.watchdogTimer = setTimeout(() => {
+      if (this.active) {
+        this.onError?.(new Error('Realtime turn timed out and was reset'));
+        this.finishTurn();
+      }
+    }, 70000);
 
     try {
       this.onEvent?.({ type: 'state', state: 'listening', message: reason === 'wake' ? "I'm listening..." : 'Realtime listening...' });
@@ -64,7 +80,10 @@ class ReyRealtimeWebRTC {
           this.remoteAudio = new Audio();
           this.remoteAudio.autoplay = true;
           this.remoteAudio.onplaying = () => this.onEvent?.({ type: 'state', state: 'speaking', message: 'Speaking...' });
-          this.remoteAudio.onended = () => this.finishTurn();
+          // MediaStream-backed Audio elements do not reliably fire a useful
+          // ended event for OpenAI Realtime. We close from protocol events plus
+          // a speech-length estimate instead, which avoids clipping long speech
+          // while still preventing stuck turns.
         }
         this.remoteAudio.srcObject = event.streams[0];
       };
@@ -102,6 +121,7 @@ class ReyRealtimeWebRTC {
   async stopListening() {
     if (!this.active) return;
     if (this.inputTrack) this.inputTrack.enabled = false;
+    this.pendingStop = true;
     this.onEvent?.({ type: 'state', state: 'processing', message: 'Thinking...' });
     this.requestResponse();
   }
@@ -114,10 +134,8 @@ class ReyRealtimeWebRTC {
   async close() {
     this.active = false;
     this.awaitingResponse = false;
-    if (this.closeTimer) {
-      clearTimeout(this.closeTimer);
-      this.closeTimer = null;
-    }
+    this.pendingStop = false;
+    this.clearTimers();
     try { this.dc?.close(); } catch {}
     try { this.pc?.close(); } catch {}
     if (this.remoteAudio) {
@@ -129,6 +147,17 @@ class ReyRealtimeWebRTC {
     this.dc = null;
     this.remoteAudio = null;
     this.inputTrack = null;
+  }
+
+  clearTimers() {
+    if (this.closeTimer) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = null;
+    }
+    if (this.watchdogTimer) {
+      clearTimeout(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
   }
 
   async createSession() {
@@ -191,6 +220,12 @@ class ReyRealtimeWebRTC {
         tool_choice: 'auto',
       },
     });
+
+    if (this.pendingStop) {
+      // The user released push-to-talk before negotiation finished. Process as
+      // soon as the data channel is usable instead of getting stuck in Thinking.
+      setTimeout(() => this.requestResponse(), 100);
+    }
   }
 
   handleRealtimeEvent(event) {
@@ -215,8 +250,9 @@ class ReyRealtimeWebRTC {
     }
 
     if (type === 'response.audio.done') {
+      this.audioDone = true;
       this.deliverFinalResponse();
-      this.scheduleFinishTurn(1200);
+      this.scheduleFinishAfterSpeech();
       return;
     }
 
@@ -229,18 +265,18 @@ class ReyRealtimeWebRTC {
     if (type === 'response.function_call_arguments.done') {
       const key = event.call_id || event.item_id;
       const args = event.arguments || this.toolArguments.get(key) || '{}';
+      this.awaitingResponse = false;
       this.handleToolCall(event.call_id, args);
       return;
     }
 
     if (type === 'response.done') {
+      this.responseDone = true;
       const output = event.response?.output || [];
       const hasToolCall = output.some((item) => item.type === 'function_call');
       if (!hasToolCall) {
         this.deliverFinalResponse();
-        // If audio.done already fired this is harmless; otherwise this is a
-        // safety net for text-only or interrupted responses.
-        this.scheduleFinishTurn(2500);
+        this.scheduleFinishAfterSpeech();
       }
     }
   }
@@ -287,14 +323,19 @@ class ReyRealtimeWebRTC {
   }
 
   requestResponse() {
-    if (this.awaitingResponse) return;
+    if (this.awaitingResponse) return false;
+    if (!this.isReady()) return false;
     this.awaitingResponse = true;
+    this.pendingStop = false;
     this.send({ type: 'response.create', response: { modalities: ['text', 'audio'] } });
+    return true;
   }
 
   deliverFinalResponse() {
+    if (this.delivered) return;
     const text = this.responseText.trim();
     if (!text) return;
+    this.delivered = true;
     this.onEvent?.({
       type: 'response',
       user_text: this.userTranscript || '[voice input]',
@@ -303,9 +344,17 @@ class ReyRealtimeWebRTC {
     });
   }
 
-  scheduleFinishTurn(delayMs) {
+  estimateRemainingPlaybackMs() {
+    const text = this.responseText.trim();
+    const words = text ? text.split(/\s+/).length : 8;
+    // Comfortable spoken English is roughly 2.4 words/sec; add startup/buffer
+    // margin. Bound it so broken events do not hold the UI hostage.
+    return Math.max(2200, Math.min(45000, Math.round((words / 2.4) * 1000 + 1800)));
+  }
+
+  scheduleFinishAfterSpeech() {
     if (this.closeTimer) return;
-    this.closeTimer = setTimeout(() => this.finishTurn(), delayMs);
+    this.closeTimer = setTimeout(() => this.finishTurn(), this.estimateRemainingPlaybackMs());
   }
 
   finishTurn() {
@@ -317,7 +366,9 @@ class ReyRealtimeWebRTC {
   send(payload) {
     if (this.dc?.readyState === 'open') {
       this.dc.send(JSON.stringify(payload));
+      return true;
     }
+    return false;
   }
 
   authHeaders(extra = {}) {

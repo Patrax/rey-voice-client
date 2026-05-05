@@ -14,6 +14,7 @@ class ReyVoiceClient {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.isPlayingAudio = false;
+    this.realtimeTurnActive = false;
     
     // UI elements
     this.app = document.getElementById('app');
@@ -330,10 +331,19 @@ class ReyVoiceClient {
 
   async startRealtimeTurn(reason = 'manual') {
     if (!this.useWebRTCRealtime()) return;
-    if (this.isPlayingAudio) {
-      await this.realtime.interrupt();
-      this.isPlayingAudio = false;
+    if (this.realtime?.isActive()) {
+      // If Rey is speaking, a new press means interruption/new turn. If she is
+      // listening or thinking, leave the current turn alone and wait for release.
+      if (this.state === 'speaking' || this.isPlayingAudio) {
+        await this.realtime.interrupt();
+        this.isPlayingAudio = false;
+        this.realtimeTurnActive = false;
+        this.updateReplayButton();
+      } else {
+        return;
+      }
     }
+    this.realtimeTurnActive = true;
     await this.realtime.start({ reason });
   }
 
@@ -341,7 +351,6 @@ class ReyVoiceClient {
     if (!this.useWebRTCRealtime()) return false;
     if (this.realtime?.isActive()) {
       await this.realtime.stopListening();
-      window.electronAPI.listeningStopped();
       return true;
     }
     return false;
@@ -350,11 +359,17 @@ class ReyVoiceClient {
   handleRealtimeEvent(event) {
     switch (event.type) {
       case 'state':
+        if (event.state === 'speaking') {
+          this.isPlayingAudio = true;
+        } else if (event.state === 'waiting' || event.state === 'listening' || event.state === 'processing') {
+          this.isPlayingAudio = false;
+        }
         this.setState(event.state, event.message);
         if (event.state === 'waiting') {
-          this.isPlayingAudio = false;
+          this.realtimeTurnActive = false;
           window.electronAPI.listeningStopped();
         }
+        this.updateReplayButton();
         break;
       case 'user_transcript':
         // Store final transcript once the response arrives to keep ordering clean.
@@ -369,7 +384,9 @@ class ReyVoiceClient {
         if (event.user_text) this.addToTranscript('user', event.user_text);
         this.addToTranscript('rey', event.rey_text);
         this.lastResponse = event.rey_text;
-        this.isPlayingAudio = true;
+        // Replay should only be disabled while actual audio is playing. The
+        // speaking state event owns that flag; response metadata alone should
+        // not permanently disable replay if playback events are delayed/missing.
         this.updateReplayButton();
         console.log(`Realtime WebRTC turn completed in ${event.elapsed_ms}ms`);
         break;
@@ -379,7 +396,10 @@ class ReyVoiceClient {
   handleRealtimeError(err) {
     console.error('Realtime WebRTC error:', err);
     this.showError(`Realtime error: ${err.message}`);
+    this.isPlayingAudio = false;
+    this.realtimeTurnActive = false;
     this.setState('waiting', 'Ready');
+    this.updateReplayButton();
     window.electronAPI.listeningStopped();
   }
 
@@ -400,32 +420,38 @@ class ReyVoiceClient {
   setState(state, message) {
     this.state = state;
     this.app.className = `container state-${state}`;
-    
-    if (message) {
-      this.message.textContent = message;
-    } else {
-      switch (state) {
-        case 'waiting':
-          this.message.textContent = "Ready";
-          this.statusText.textContent = 'READY';
-          this.setExpression('neutral');
-          break;
-        case 'listening':
-          this.message.textContent = "I'm listening...";
-          this.statusText.textContent = 'LISTENING';
-          this.setExpression('listening');
-          break;
-        case 'processing':
-          this.message.textContent = 'Hmm let me think...';
-          this.statusText.textContent = 'THINKING';
-          this.setExpression('thinking');
-          break;
-        case 'speaking':
-          this.statusText.textContent = 'SPEAKING';
-          this.setExpression('speaking');
-          break;
-      }
+    if (state !== 'speaking') {
+      this.isPlayingAudio = false;
     }
+
+    const fallbackMessages = {
+      waiting: 'Ready',
+      listening: "I'm listening...",
+      processing: 'Hmm let me think...',
+      speaking: 'Speaking...',
+    };
+    this.message.textContent = message || fallbackMessages[state] || '';
+
+    switch (state) {
+      case 'waiting':
+        this.statusText.textContent = 'READY';
+        this.setExpression('neutral');
+        break;
+      case 'listening':
+        this.statusText.textContent = 'LISTENING';
+        this.setExpression('listening');
+        break;
+      case 'processing':
+        this.statusText.textContent = 'THINKING';
+        this.setExpression('thinking');
+        break;
+      case 'speaking':
+        this.statusText.textContent = 'SPEAKING';
+        this.setExpression('speaking');
+        break;
+    }
+
+    this.updateReplayButton();
   }
 
   setExpression(expression) {
@@ -686,9 +712,11 @@ class ReyVoiceClient {
 
   updateReplayButton() {
     if (this.replayBtn) {
-      this.replayBtn.disabled = this.isPlayingAudio;
-      this.replayBtn.style.opacity = this.isPlayingAudio ? '0.3' : '1';
-      this.replayBtn.style.cursor = this.isPlayingAudio ? 'not-allowed' : 'pointer';
+      const hasReplay = Boolean(this.lastAudio || this.lastResponse);
+      const disabled = this.isPlayingAudio || !hasReplay;
+      this.replayBtn.disabled = disabled;
+      this.replayBtn.style.opacity = disabled ? '0.3' : '1';
+      this.replayBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
     }
   }
 
