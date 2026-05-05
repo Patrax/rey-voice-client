@@ -125,9 +125,6 @@ class ReyRealtimeWebRTC {
     if (this.inputTrack) this.inputTrack.enabled = false;
     this.pendingStop = true;
     this.onEvent?.({ type: 'state', state: 'processing', message: 'Thinking...' });
-    if (this.turnReason === 'manual') {
-      this.send({ type: 'input_audio_buffer.commit' });
-    }
     this.requestResponse();
   }
 
@@ -192,20 +189,18 @@ class ReyRealtimeWebRTC {
   }
 
   configureSession() {
-    const turnDetection = this.turnReason === 'manual' ? null : {
-      type: 'server_vad',
-      threshold: 0.5,
-      prefix_padding_ms: 300,
-      silence_duration_ms: 650,
-      create_response: false,
-    };
-
     this.send({
       type: 'session.update',
       session: {
         modalities: ['text', 'audio'],
         input_audio_transcription: { model: 'whisper-1' },
-        turn_detection: turnDetection,
+        turn_detection: {
+          type: 'server_vad',
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 650,
+          create_response: false,
+        },
         tools: [
           {
             type: 'function',

@@ -155,7 +155,7 @@ async def create_realtime_session(
         "instructions": build_voice_instructions(),
         "modalities": ["text", "audio"],
         "input_audio_transcription": {"model": config.OPENAI_REALTIME_TRANSCRIPTION_MODEL},
-        "turn_detection": None if body.reason == "manual" else {
+        "turn_detection": {
             "type": "server_vad",
             "threshold": 0.5,
             "prefix_padding_ms": 300,
