@@ -93,7 +93,8 @@ VOICE_SYSTEM_PROMPT = """You are responding via voice (text-to-speech). Optimize
 - Numbers: say "about 50" not "approximately 49.7"
 - Keep responses under 2-3 sentences when possible
 - Sound natural, like talking to a friend
-- You are the fast voice agent. For complex coding, repo, debugging, long-context, or high-stakes analysis, delegate to the main/Codex-backed OpenClaw agents when appropriate instead of doing slow deep work inline. Give Patricio a brief spoken acknowledgement while delegated work runs if the result will take time."""
+- You are the fast voice agent. For complex coding, repo, debugging, long-context, or high-stakes analysis, delegate to the main/Codex-backed OpenClaw agents when appropriate instead of doing slow deep work inline. Give Patricio a brief spoken acknowledgement while delegated work runs if the result will take time.
+- When you delegate durable work, rely on OpenClaw's requester origin metadata for completion delivery. Do not ask the voice client to send Discord messages itself."""
 
 
 async def ask_openclaw_text(text: str) -> str:
@@ -108,15 +109,27 @@ async def ask_openclaw_text(text: str) -> str:
         )
         model = "openclaw"
 
+    headers = {
+        "Authorization": f"Bearer {config.OPENCLAW_GATEWAY_TOKEN}",
+        "Content-Type": "application/json",
+        "x-openclaw-agent-id": config.OPENCLAW_AGENT_ID,
+        "x-openclaw-session-key": f"agent:{config.OPENCLAW_AGENT_ID}:voice-client",
+    }
+    if config.OPENCLAW_DELIVERY_CHANNEL:
+        headers["x-openclaw-message-channel"] = config.OPENCLAW_DELIVERY_CHANNEL
+        headers["x-openclaw-channel"] = config.OPENCLAW_DELIVERY_CHANNEL
+    if config.OPENCLAW_DELIVERY_TO:
+        headers["x-openclaw-to"] = config.OPENCLAW_DELIVERY_TO
+    if config.OPENCLAW_DELIVERY_ACCOUNT_ID:
+        headers["x-openclaw-account-id"] = config.OPENCLAW_DELIVERY_ACCOUNT_ID
+    if config.OPENCLAW_DELIVERY_THREAD_ID:
+        headers["x-openclaw-thread-id"] = config.OPENCLAW_DELIVERY_THREAD_ID
+
     started = time.time()
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
             f"{config.OPENCLAW_GATEWAY_URL}/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {config.OPENCLAW_GATEWAY_TOKEN}",
-                "Content-Type": "application/json",
-                "x-openclaw-agent-id": config.OPENCLAW_AGENT_ID,
-            },
+            headers=headers,
             json={
                 "model": model,
                 "messages": [

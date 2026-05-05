@@ -351,7 +351,7 @@ class ReyVoiceClient {
       case 'state':
         if (event.state === 'speaking') {
           this.isPlayingAudio = true;
-        } else if (event.state === 'waiting' || event.state === 'listening' || event.state === 'processing') {
+        } else if (event.state === 'waiting' || event.state === 'listening' || event.state === 'processing' || event.state === 'error') {
           this.isPlayingAudio = false;
         }
         this.setState(event.state, event.message);
@@ -395,7 +395,7 @@ class ReyVoiceClient {
     this.showError(`Realtime error: ${err.message}`);
     this.isPlayingAudio = false;
     this.realtimeTurnActive = false;
-    this.setState('waiting', 'Ready');
+    this.setState('error', err.message || 'Realtime error');
     this.updateReplayButton();
     window.electronAPI.listeningStopped();
   }
@@ -426,6 +426,7 @@ class ReyVoiceClient {
       listening: "I'm listening...",
       processing: 'Hmm let me think...',
       speaking: 'Speaking...',
+      error: 'Something went wrong',
     };
     this.message.textContent = message || fallbackMessages[state] || '';
 
@@ -445,6 +446,10 @@ class ReyVoiceClient {
       case 'speaking':
         this.statusText.textContent = 'SPEAKING';
         this.setExpression('speaking');
+        break;
+      case 'error':
+        this.statusText.textContent = 'ERROR';
+        this.setExpression('sad');
         break;
     }
 
