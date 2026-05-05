@@ -142,12 +142,9 @@ class ReyVoiceClient {
             }
             this.updateVisualizer(float32);
             
-            // During WebRTC setup, buffer local PCM until the peer connection is
-            // ready so speech that starts right after F19 is not lost. Once the
-            // peer is ready, mic audio goes directly over the WebRTC media track.
-            if (this.realtime?.isActive()) {
-              this.realtime.capturePcmChunk(event.data.data);
-            } else if (this.socket?.readyState === WebSocket.OPEN) {
+            // In WebRTC conversation mode, mic audio goes directly to OpenAI via
+            // the media track. The server only needs raw PCM for wake/backend modes.
+            if (this.socket?.readyState === WebSocket.OPEN && !this.realtime?.isActive()) {
               this.socket.send(event.data.data);
             }
           }
@@ -334,18 +331,8 @@ class ReyVoiceClient {
 
   async startRealtimeTurn(reason = 'manual') {
     if (!this.useWebRTCRealtime()) return;
-    if (this.realtime?.isActive()) {
-      // If an old turn is speaking/draining, close it before starting the next
-      // F19 turn. If it is actively listening/thinking, wait for the stop press.
-      if (this.state === 'speaking' || this.state === 'waiting' || this.isPlayingAudio) {
-        await this.realtime.interrupt();
-        this.isPlayingAudio = false;
-        this.realtimeTurnActive = false;
-        this.updateReplayButton();
-      } else {
-        return;
-      }
-    }
+    if (this.realtime?.isActive()) return;
+    this.hideError();
     this.realtimeTurnActive = true;
     await this.realtime.start({ reason });
   }
@@ -353,7 +340,7 @@ class ReyVoiceClient {
   async stopRealtimeTurn() {
     if (!this.useWebRTCRealtime()) return false;
     if (this.realtime?.isActive()) {
-      await this.realtime.stopListening();
+      await this.realtime.end();
       return true;
     }
     return false;
@@ -383,14 +370,7 @@ class ReyVoiceClient {
         this.message.textContent = 'Listening... I hear you';
         break;
       case 'speech_stopped':
-        if (this.state === 'listening') this.message.textContent = 'Got it — press F19 again when done';
-        break;
-      case 'no_speech':
-        this.showError("I didn't detect any speech from the mic for that turn.");
-        this.isPlayingAudio = false;
-        this.realtimeTurnActive = false;
-        this.setState('waiting', 'Ready');
-        window.electronAPI.listeningStopped();
+        if (this.state === 'listening') this.message.textContent = 'Got it — thinking...';
         break;
       case 'partial_response':
         this.message.textContent = event.text.substring(0, 80) + (event.text.length > 80 ? '...' : '');
@@ -576,7 +556,11 @@ class ReyVoiceClient {
 
   async handlePushToTalkStart() {
     if (this.useWebRTCRealtime()) {
-      await this.startRealtimeTurn('manual');
+      if (this.realtime?.isActive()) {
+        await this.stopRealtimeTurn();
+      } else {
+        await this.startRealtimeTurn('manual');
+      }
       return;
     }
     if (this.socket?.readyState !== WebSocket.OPEN) return;
@@ -585,7 +569,11 @@ class ReyVoiceClient {
   }
 
   async handlePushToTalkStop() {
-    if (await this.stopRealtimeTurn()) return;
+    if (this.useWebRTCRealtime()) {
+      // In WebRTC conversation mode, the second F19 ends the whole session.
+      await this.stopRealtimeTurn();
+      return;
+    }
     if (this.socket?.readyState !== WebSocket.OPEN) return;
     // Stop listening and process immediately
     this.socket.send(JSON.stringify({ type: 'push_to_talk_stop' }));

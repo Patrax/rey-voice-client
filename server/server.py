@@ -160,7 +160,7 @@ async def create_realtime_session(
             "threshold": 0.5,
             "prefix_padding_ms": 300,
             "silence_duration_ms": 650,
-            "create_response": False,
+            "create_response": True,
         },
         "tools": [
             {

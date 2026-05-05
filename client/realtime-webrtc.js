@@ -1,9 +1,11 @@
 /**
  * OpenAI Realtime WebRTC transport for Rey.
  *
- * The server mints short-lived OpenAI client secrets and remains the private
- * OpenClaw tool bridge. Browser/Electron audio goes directly to OpenAI for the
- * low-latency speech path.
+ * Conversation-mode design:
+ * - F19 starts a long-lived Realtime session.
+ * - OpenAI server VAD owns turn detection and auto-response creation.
+ * - F19 again ends the conversation/session.
+ * - OpenClaw remains available as a private tool relay through Rey's server.
  */
 class ReyRealtimeWebRTC {
   constructor({ getServerBaseUrl, getAuthToken, getMediaStream, onEvent, onError }) {
@@ -19,24 +21,21 @@ class ReyRealtimeWebRTC {
     this.localStream = null;
     this.inputTrack = null;
     this.active = false;
-    this.awaitingResponse = false;
-    this.pendingStop = false;
-    this.responseDone = false;
-    this.audioDone = false;
+    this.ownsLocalStream = false;
+    this.toolArguments = new Map();
+    this.startedAt = 0;
+    this.watchdogTimer = null;
+    this.resetTurnState();
+  }
+
+  resetTurnState() {
+    this.userTranscript = '';
+    this.responseText = '';
     this.delivered = false;
     this.speechStarted = false;
     this.speechStopped = false;
-    this.ownsLocalStream = false;
-    this.userTranscript = '';
-    this.responseText = '';
-    this.toolArguments = new Map();
-    this.preReadyPcmChunks = [];
-    this.preReadyPcmBytes = 0;
-    this.maxPreReadyPcmBytes = 16000 * 2 * 12; // 12s of mono PCM16 @ 16kHz
-    this.startedAt = 0;
-    this.turnReason = 'manual';
-    this.closeTimer = null;
-    this.watchdogTimer = null;
+    this.audioDone = false;
+    this.responseDone = false;
   }
 
   isActive() {
@@ -50,36 +49,24 @@ class ReyRealtimeWebRTC {
   async start({ reason = 'manual' } = {}) {
     if (this.active) return;
     this.active = true;
-    this.awaitingResponse = false;
-    this.pendingStop = false;
-    this.responseDone = false;
-    this.audioDone = false;
-    this.delivered = false;
-    this.speechStarted = false;
-    this.speechStopped = false;
-    this.userTranscript = '';
-    this.responseText = '';
-    this.toolArguments.clear();
-    this.preReadyPcmChunks = [];
-    this.preReadyPcmBytes = 0;
     this.startedAt = performance.now();
-    this.turnReason = reason;
+    this.toolArguments.clear();
+    this.resetTurnState();
     this.clearTimers();
+
     this.watchdogTimer = setTimeout(() => {
       if (this.active) {
-        this.onError?.(new Error('Realtime turn timed out and was reset'));
-        this.finishTurn();
+        this.onError?.(new Error('Realtime conversation timed out and was reset'));
+        this.end();
       }
-    }, 70000);
+    }, 30 * 60 * 1000);
 
     try {
-      this.onEvent?.({ type: 'state', state: 'listening', message: reason === 'wake' ? "I'm listening..." : 'Connecting mic...' });
+      this.onEvent?.({ type: 'state', state: 'listening', message: reason === 'wake' ? "Conversation active — I'm listening" : 'Starting conversation...' });
 
       const session = await this.createSession(reason);
       const clientSecret = session?.client_secret?.value;
-      if (!clientSecret) {
-        throw new Error('Realtime session did not include a client secret');
-      }
+      if (!clientSecret) throw new Error('Realtime session did not include a client secret');
 
       this.pc = new RTCPeerConnection();
       this.dc = this.pc.createDataChannel('oai-events');
@@ -92,10 +79,7 @@ class ReyRealtimeWebRTC {
           this.remoteAudio = new Audio();
           this.remoteAudio.autoplay = true;
           this.remoteAudio.onplaying = () => this.onEvent?.({ type: 'state', state: 'speaking', message: 'Speaking...' });
-          // MediaStream-backed Audio elements do not reliably fire a useful
-          // ended event for OpenAI Realtime. We close from protocol events plus
-          // a speech-length estimate instead, which avoids clipping long speech
-          // while still preventing stuck turns.
+          this.remoteAudio.onended = () => this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — listening' });
         }
         this.remoteAudio.srcObject = event.streams[0];
       };
@@ -103,15 +87,14 @@ class ReyRealtimeWebRTC {
       this.pc.onconnectionstatechange = () => {
         const state = this.pc?.connectionState;
         console.log('Realtime WebRTC connection:', state);
+        if (state === 'connected') {
+          this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — speak naturally' });
+        }
         if (state === 'failed' || state === 'closed' || state === 'disconnected') {
-          if (this.active) this.finishTurn();
+          if (this.active) this.end();
         }
       };
 
-      // Use the existing app mic stream for the WebRTC media track so Electron
-      // doesn't need to juggle two simultaneous mic captures. The renderer also
-      // buffers AudioWorklet PCM while the peer connection is negotiating so
-      // speech that starts immediately after F19 is not lost.
       this.localStream = this.getMediaStream();
       if (!this.localStream) {
         this.localStream = await navigator.mediaDevices.getUserMedia({
@@ -135,23 +118,19 @@ class ReyRealtimeWebRTC {
     }
   }
 
-  async stopListening() {
+  async end() {
     if (!this.active) return;
-    if (this.inputTrack) this.inputTrack.enabled = false;
-    this.pendingStop = true;
-    this.onEvent?.({ type: 'state', state: 'processing', message: 'Thinking...' });
-    this.requestResponse();
+    await this.close();
+    this.onEvent?.({ type: 'state', state: 'waiting', message: 'Ready' });
   }
 
   async interrupt() {
     this.send({ type: 'response.cancel' });
-    await this.close();
+    await this.end();
   }
 
   async close() {
     this.active = false;
-    this.awaitingResponse = false;
-    this.pendingStop = false;
     this.clearTimers();
     try { this.dc?.close(); } catch {}
     try { this.pc?.close(); } catch {}
@@ -171,15 +150,11 @@ class ReyRealtimeWebRTC {
     this.inputTrack = null;
     this.localStream = null;
     this.ownsLocalStream = false;
-    this.preReadyPcmChunks = [];
-    this.preReadyPcmBytes = 0;
+    this.toolArguments.clear();
+    this.resetTurnState();
   }
 
   clearTimers() {
-    if (this.closeTimer) {
-      clearTimeout(this.closeTimer);
-      this.closeTimer = null;
-    }
     if (this.watchdogTimer) {
       clearTimeout(this.watchdogTimer);
       this.watchdogTimer = null;
@@ -190,7 +165,7 @@ class ReyRealtimeWebRTC {
     const response = await fetch(`${this.getServerBaseUrl()}/realtime/session`, {
       method: 'POST',
       headers: this.authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ transport: 'webrtc', reason }),
+      body: JSON.stringify({ transport: 'webrtc', reason, mode: 'conversation' }),
     });
     if (!response.ok) throw new Error(`Realtime session failed: ${response.status}`);
     return response.json();
@@ -223,7 +198,7 @@ class ReyRealtimeWebRTC {
           threshold: 0.5,
           prefix_padding_ms: 300,
           silence_duration_ms: 650,
-          create_response: false,
+          create_response: true,
         },
         tools: [
           {
@@ -246,91 +221,47 @@ class ReyRealtimeWebRTC {
         tool_choice: 'auto',
       },
     });
-
-    this.flushPreReadyAudio();
-    this.onEvent?.({ type: 'state', state: 'listening', message: 'Listening... speak now' });
-
-    if (this.pendingStop) {
-      // The user released push-to-talk before negotiation finished. Give any
-      // flushed pre-ready audio a moment to produce speech_started, then submit.
-      setTimeout(() => this.requestResponse(), 800);
-    }
-  }
-
-
-  capturePcmChunk(arrayBuffer) {
-    if (!this.active || this.isReady()) return;
-    const copy = arrayBuffer.slice(0);
-    this.preReadyPcmChunks.push(copy);
-    this.preReadyPcmBytes += copy.byteLength;
-    while (this.preReadyPcmBytes > this.maxPreReadyPcmBytes && this.preReadyPcmChunks.length > 0) {
-      const dropped = this.preReadyPcmChunks.shift();
-      this.preReadyPcmBytes -= dropped.byteLength;
-    }
-  }
-
-  flushPreReadyAudio() {
-    if (!this.isReady() || this.preReadyPcmChunks.length === 0) return;
-    console.log(`Flushing ${this.preReadyPcmChunks.length} pre-ready PCM chunks to Realtime`);
-    for (const chunk of this.preReadyPcmChunks) {
-      this.send({
-        type: 'input_audio_buffer.append',
-        audio: this.arrayBufferToBase64(chunk),
-      });
-    }
-    this.preReadyPcmChunks = [];
-    this.preReadyPcmBytes = 0;
-  }
-
-  arrayBufferToBase64(buffer) {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-    }
-    return btoa(binary);
+    this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — speak naturally' });
   }
 
   handleRealtimeEvent(event) {
     const type = event.type;
     if (type === 'error') {
       const message = event.error?.message || JSON.stringify(event.error || event);
-      // Benign race from older/autoresponse sessions: OpenAI may already be
-      // speaking when a queued/manual response.create arrives. Do not strand the
-      // UI in an error overlay; let the active response finish normally.
-      if (/active response in progress/i.test(message)) {
-        console.warn('Ignoring duplicate response.create while response is active:', message);
-        return;
-      }
       this.onError?.(new Error(message));
       return;
     }
 
     if (type === 'input_audio_buffer.speech_started') {
       this.speechStarted = true;
-      console.log('Realtime detected speech start');
+      this.speechStopped = false;
+      this.responseText = '';
+      this.userTranscript = '';
+      this.delivered = false;
+      this.audioDone = false;
+      this.responseDone = false;
       this.onEvent?.({ type: 'speech_started' });
       return;
     }
 
     if (type === 'input_audio_buffer.speech_stopped') {
       this.speechStopped = true;
-      console.log('Realtime detected speech stop');
       this.onEvent?.({ type: 'speech_stopped' });
-      // Toggle push-to-talk must wait for Patricio's second F19 press. Only
-      // wake-word turns auto-submit when server VAD hears the end of speech.
-      if (this.turnReason === 'wake' && !this.pendingStop && this.speechStarted) {
-        setTimeout(() => this.requestResponse(), 100);
-      }
       return;
     }
 
     if (type === 'conversation.item.input_audio_transcription.completed') {
       this.userTranscript = event.transcript || this.userTranscript;
-      if (this.userTranscript) {
-        this.onEvent?.({ type: 'user_transcript', text: this.userTranscript });
-      }
+      if (this.userTranscript) this.onEvent?.({ type: 'user_transcript', text: this.userTranscript });
+      return;
+    }
+
+    if (type === 'response.created') {
+      this.responseText = '';
+      this.delivered = false;
+      this.audioDone = false;
+      this.responseDone = false;
+      this.onEvent?.({ type: 'state', state: 'processing', message: 'Thinking...' });
       return;
     }
 
@@ -343,12 +274,7 @@ class ReyRealtimeWebRTC {
     if (type === 'response.audio.done') {
       this.audioDone = true;
       this.deliverFinalResponse();
-      // audio.done means OpenAI has finished generating audio, but Electron can
-      // still be playing buffered WebRTC media. Mark the UI ready now so F19 is
-      // responsive, but keep the peer connection alive long enough to avoid
-      // clipping the tail. A new F19 press will close this draining turn first.
-      this.onEvent?.({ type: 'state', state: 'waiting', message: 'Ready' });
-      this.scheduleFinishTurn(this.estimateRemainingPlaybackMs());
+      this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — listening' });
       return;
     }
 
@@ -361,7 +287,6 @@ class ReyRealtimeWebRTC {
     if (type === 'response.function_call_arguments.done') {
       const key = event.call_id || event.item_id;
       const args = event.arguments || this.toolArguments.get(key) || '{}';
-      this.awaitingResponse = false;
       this.handleToolCall(event.call_id, args);
       return;
     }
@@ -372,10 +297,7 @@ class ReyRealtimeWebRTC {
       const hasToolCall = output.some((item) => item.type === 'function_call');
       if (!hasToolCall) {
         this.deliverFinalResponse();
-        if (!this.audioDone) {
-          this.onEvent?.({ type: 'state', state: 'waiting', message: 'Ready' });
-          this.scheduleFinishTurn(1000);
-        }
+        if (!this.audioDone) this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — listening' });
       }
     }
   }
@@ -395,7 +317,7 @@ class ReyRealtimeWebRTC {
           output,
         },
       });
-      this.requestResponse();
+      this.send({ type: 'response.create', response: { modalities: ['text', 'audio'] } });
     } catch (err) {
       console.error('OpenClaw relay failed:', err);
       this.send({
@@ -406,7 +328,7 @@ class ReyRealtimeWebRTC {
           output: `OpenClaw tool call failed: ${err.message}`,
         },
       });
-      this.requestResponse();
+      this.send({ type: 'response.create', response: { modalities: ['text', 'audio'] } });
     }
   }
 
@@ -421,21 +343,6 @@ class ReyRealtimeWebRTC {
     return data.response || '';
   }
 
-  requestResponse() {
-    if (this.awaitingResponse) return false;
-    if (!this.isReady()) return false;
-    if (!this.speechStarted) {
-      console.warn('Realtime response blocked: no speech was detected for this turn');
-      this.onEvent?.({ type: 'no_speech' });
-      this.finishTurn();
-      return false;
-    }
-    this.awaitingResponse = true;
-    this.pendingStop = false;
-    this.send({ type: 'response.create', response: { modalities: ['text', 'audio'] } });
-    return true;
-  }
-
   deliverFinalResponse() {
     if (this.delivered) return;
     const text = this.responseText.trim();
@@ -447,25 +354,6 @@ class ReyRealtimeWebRTC {
       rey_text: text,
       elapsed_ms: Math.round(performance.now() - this.startedAt),
     });
-  }
-
-  estimateRemainingPlaybackMs() {
-    const text = this.responseText.trim();
-    const words = text ? text.split(/\s+/).length : 8;
-    // Keep the transport alive for likely buffered playback, but cap it so a
-    // broken event stream cannot hold the old peer connection forever.
-    return Math.max(1800, Math.min(30000, Math.round((words / 2.6) * 1000 + 900)));
-  }
-
-  scheduleFinishTurn(delayMs) {
-    if (this.closeTimer) return;
-    this.closeTimer = setTimeout(() => this.finishTurn(), delayMs);
-  }
-
-  finishTurn() {
-    if (!this.active) return;
-    this.close();
-    this.onEvent?.({ type: 'state', state: 'waiting', message: 'Ready' });
   }
 
   send(payload) {
