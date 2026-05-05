@@ -197,7 +197,7 @@ class ReyRealtimeWebRTC {
           threshold: 0.5,
           prefix_padding_ms: 300,
           silence_duration_ms: 650,
-          create_response: true,
+          create_response: false,
         },
         tools: [
           {
@@ -231,7 +231,24 @@ class ReyRealtimeWebRTC {
   handleRealtimeEvent(event) {
     const type = event.type;
     if (type === 'error') {
-      this.onError?.(new Error(event.error?.message || JSON.stringify(event.error || event)));
+      const message = event.error?.message || JSON.stringify(event.error || event);
+      // Benign race from older/autoresponse sessions: OpenAI may already be
+      // speaking when a queued/manual response.create arrives. Do not strand the
+      // UI in an error overlay; let the active response finish normally.
+      if (/active response in progress/i.test(message)) {
+        console.warn('Ignoring duplicate response.create while response is active:', message);
+        return;
+      }
+      this.onError?.(new Error(message));
+      return;
+    }
+
+    if (type === 'input_audio_buffer.speech_stopped') {
+      // Wake-word turns do not have a key-up event. With create_response=false,
+      // this is our clean signal to ask Realtime to answer once VAD sees the end.
+      if (!this.pendingStop) {
+        setTimeout(() => this.requestResponse(), 100);
+      }
       return;
     }
 
