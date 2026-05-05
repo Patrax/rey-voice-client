@@ -276,7 +276,9 @@ class ReyRealtimeWebRTC {
     if (type === 'response.audio.done') {
       this.audioDone = true;
       this.deliverFinalResponse();
-      this.scheduleFinishTurn(1000);
+      // audio.done means OpenAI has finished the spoken response. Keep only a
+      // tiny grace period for the media pipeline tail; do not block the next F19.
+      this.scheduleFinishTurn(150);
       return;
     }
 
@@ -301,7 +303,7 @@ class ReyRealtimeWebRTC {
       if (!hasToolCall) {
         this.deliverFinalResponse();
         if (!this.audioDone) {
-          this.scheduleFinishTurn(2500);
+          this.scheduleFinishTurn(1000);
         }
       }
     }
