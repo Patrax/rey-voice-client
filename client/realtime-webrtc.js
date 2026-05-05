@@ -212,6 +212,10 @@ class ReyRealtimeWebRTC {
                   type: 'string',
                   description: "The user's request, rewritten clearly for OpenClaw while preserving intent and relevant context.",
                 },
+                target_area: {
+                  type: 'string',
+                  description: 'Optional project/channel target when Patricio names one, such as humanslivehere, tenpace, or rey-voice.',
+                },
               },
               required: ['request'],
               additionalProperties: false,
@@ -307,8 +311,9 @@ class ReyRealtimeWebRTC {
     try {
       const args = JSON.parse(argumentsJson || '{}');
       const request = (args.request || '').trim();
+      const targetArea = (args.target_area || '').trim();
       this.onEvent?.({ type: 'state', state: 'processing', message: 'Checking with OpenClaw...' });
-      const output = await this.askOpenClaw(request || 'Please infer the user request from the current voice turn.');
+      const output = await this.askOpenClaw(request || 'Please infer the user request from the current voice turn.', targetArea);
       this.send({
         type: 'conversation.item.create',
         item: {
@@ -332,11 +337,11 @@ class ReyRealtimeWebRTC {
     }
   }
 
-  async askOpenClaw(request) {
+  async askOpenClaw(request, targetArea = '') {
     const response = await fetch(`${this.getServerBaseUrl()}/openclaw/ask`, {
       method: 'POST',
       headers: this.authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ request }),
+      body: JSON.stringify({ request, target_area: targetArea || undefined }),
     });
     if (!response.ok) throw new Error(`OpenClaw relay failed: ${response.status}`);
     const data = await response.json();

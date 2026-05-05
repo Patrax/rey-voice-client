@@ -5,13 +5,13 @@
     {
       "name": "Tenpace",
       "aliases": ["ten pace", "tenbase", "10 pace", "10 days"],
-      "meaning": "Patricio's AI-native software-team/workflow product and company project.",
+      "meaning": "Patricio's AI-native software-team/workflow product and company project. Use target_area tenpace when calling ask_openclaw for this project.",
       "route_to_openclaw": true
     },
     {
       "name": "humanslivehere.com",
       "aliases": ["humans live here", "humanslivehere", "humans livehere"],
-      "meaning": "Patricio's expressive old-internet-style community/place project.",
+      "meaning": "Patricio's expressive old-internet-style community/place project. Use target_area humanslivehere when calling ask_openclaw for this project.",
       "route_to_openclaw": true
     },
     {

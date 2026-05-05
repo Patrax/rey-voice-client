@@ -1,4 +1,5 @@
 """Configuration for Rey Voice Server."""
+import json
 import os
 from dotenv import load_dotenv
 
@@ -15,6 +16,36 @@ OPENCLAW_DELIVERY_ACCOUNT_ID = os.getenv("OPENCLAW_DELIVERY_ACCOUNT_ID", "")
 OPENCLAW_DELIVERY_THREAD_ID = os.getenv("OPENCLAW_DELIVERY_THREAD_ID", "")
 OPENCLAW_AUTHORITATIVE_AGENT_ID = os.getenv("OPENCLAW_AUTHORITATIVE_AGENT_ID", "main")
 OPENCLAW_AUTHORITATIVE_SESSION_KEY = os.getenv("OPENCLAW_AUTHORITATIVE_SESSION_KEY", "")
+DEFAULT_OPENCLAW_ROUTE_TARGETS = {
+    "humanslivehere": {
+        "aliases": ["humans live here", "humanslivehere", "humanslivehere.com", "humans livehere"],
+        "delivery_channel": "discord",
+        "delivery_to": "channel:1500666109643460799",
+        "account_id": "default",
+        "authoritative_agent_id": "main",
+        "authoritative_session_key": "agent:main:discord:channel:1500666109643460799",
+    },
+    "tenpace": {
+        "aliases": ["ten pace", "tenpace", "10 pace"],
+        "delivery_channel": "discord",
+        "delivery_to": "channel:1500666140492562616",
+        "account_id": "default",
+        "authoritative_agent_id": "main",
+        "authoritative_session_key": "agent:main:discord:channel:1500666140492562616",
+    },
+    "rey-voice": {
+        "aliases": ["rey voice", "voice client", "voice server", "rey-voice"],
+        "delivery_channel": "discord",
+        "delivery_to": "channel:1501214331759755365",
+        "account_id": "default",
+        "authoritative_agent_id": "main",
+        "authoritative_session_key": "agent:main:discord:channel:1501214331759755365",
+    },
+}
+try:
+    OPENCLAW_ROUTE_TARGETS = json.loads(os.getenv("OPENCLAW_ROUTE_TARGETS_JSON", "")) or DEFAULT_OPENCLAW_ROUTE_TARGETS
+except json.JSONDecodeError:
+    OPENCLAW_ROUTE_TARGETS = DEFAULT_OPENCLAW_ROUTE_TARGETS
 
 # Wake word
 WAKE_WORD = os.getenv("WAKE_WORD", "hey_jarvis")  # OpenWakeWord model name

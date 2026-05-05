@@ -79,6 +79,7 @@ class RealtimeSessionRequest(BaseModel):
 
 class OpenClawAskRequest(BaseModel):
     request: str
+    target_area: Optional[str] = None
 
 
 AUTHORITATIVE_CONTEXT_PATTERNS = (
@@ -100,17 +101,38 @@ AUTHORITATIVE_CONTEXT_PATTERNS = (
     "rey-voice",
     "openclaw",
     "tenpace",
+    "humanslivehere",
+    "humans live here",
 )
 
 
-def should_use_authoritative_context(text: str) -> bool:
+def normalize_area_text(value: str | None) -> str:
+    return " ".join((value or "").lower().replace("-", " ").replace("_", " ").split())
+
+
+def should_use_authoritative_context(text: str, target_area: str | None = None) -> bool:
     """Route durable/project work through the canonical OpenClaw session."""
+    if resolve_route_target(text, target_area):
+        return True
     lowered = f" {text.lower()} "
     return any(pattern in lowered for pattern in AUTHORITATIVE_CONTEXT_PATTERNS)
 
 
-def resolve_authoritative_session_key() -> str:
-    """Resolve the configured delivery target to the authoritative Discord session key."""
+def resolve_route_target(text: str, target_area: str | None = None) -> dict | None:
+    """Resolve spoken project/channel names such as humanslivehere to routing metadata."""
+    haystacks = [normalize_area_text(target_area), normalize_area_text(text)]
+    for name, route in config.OPENCLAW_ROUTE_TARGETS.items():
+        aliases = [name, *(route.get("aliases") or [])]
+        normalized_aliases = [normalize_area_text(alias) for alias in aliases if normalize_area_text(alias)]
+        if any(alias and any(alias in haystack for haystack in haystacks if haystack) for alias in normalized_aliases):
+            return route
+    return None
+
+
+def resolve_authoritative_session_key(route: dict | None = None) -> str:
+    """Resolve the requested target to an authoritative OpenClaw session key."""
+    if route and route.get("authoritative_session_key"):
+        return route["authoritative_session_key"]
     if config.OPENCLAW_AUTHORITATIVE_SESSION_KEY:
         return config.OPENCLAW_AUTHORITATIVE_SESSION_KEY
     if (
@@ -137,7 +159,7 @@ VOICE_SYSTEM_PROMPT = """You are responding via voice (text-to-speech). Optimize
 - When you delegate durable work, rely on OpenClaw's requester origin metadata for completion delivery. Do not ask the voice client to send Discord messages itself."""
 
 
-async def ask_openclaw_text(text: str) -> str:
+async def ask_openclaw_text(text: str, target_area: str | None = None) -> str:
     """Send text to OpenClaw using the voice-optimized agent/session."""
     import time
 
@@ -149,8 +171,12 @@ async def ask_openclaw_text(text: str) -> str:
         )
         model = "openclaw"
 
-    authoritative_session_key = resolve_authoritative_session_key() if should_use_authoritative_context(text) else ""
-    agent_id = config.OPENCLAW_AUTHORITATIVE_AGENT_ID if authoritative_session_key else config.OPENCLAW_AGENT_ID
+    route = resolve_route_target(text, target_area)
+    authoritative_session_key = resolve_authoritative_session_key(route) if should_use_authoritative_context(text, target_area) else ""
+    if authoritative_session_key:
+        agent_id = (route.get("authoritative_agent_id") if route else None) or config.OPENCLAW_AUTHORITATIVE_AGENT_ID
+    else:
+        agent_id = config.OPENCLAW_AGENT_ID
     session_key = authoritative_session_key or f"agent:{config.OPENCLAW_AGENT_ID}:voice-client"
 
     headers = {
@@ -162,13 +188,16 @@ async def ask_openclaw_text(text: str) -> str:
     if authoritative_session_key:
         headers["x-openclaw-authoritative-session-key"] = authoritative_session_key
         headers["x-openclaw-authoritative-agent-id"] = config.OPENCLAW_AUTHORITATIVE_AGENT_ID
-    if config.OPENCLAW_DELIVERY_CHANNEL:
-        headers["x-openclaw-message-channel"] = config.OPENCLAW_DELIVERY_CHANNEL
-        headers["x-openclaw-channel"] = config.OPENCLAW_DELIVERY_CHANNEL
-    if config.OPENCLAW_DELIVERY_TO:
-        headers["x-openclaw-to"] = config.OPENCLAW_DELIVERY_TO
-    if config.OPENCLAW_DELIVERY_ACCOUNT_ID:
-        headers["x-openclaw-account-id"] = config.OPENCLAW_DELIVERY_ACCOUNT_ID
+    delivery_channel = (route.get("delivery_channel") if route else None) or config.OPENCLAW_DELIVERY_CHANNEL
+    delivery_to = (route.get("delivery_to") if route else None) or config.OPENCLAW_DELIVERY_TO
+    delivery_account_id = (route.get("account_id") if route else None) or config.OPENCLAW_DELIVERY_ACCOUNT_ID
+    if delivery_channel:
+        headers["x-openclaw-message-channel"] = delivery_channel
+        headers["x-openclaw-channel"] = delivery_channel
+    if delivery_to:
+        headers["x-openclaw-to"] = delivery_to
+    if delivery_account_id:
+        headers["x-openclaw-account-id"] = delivery_account_id
     if config.OPENCLAW_DELIVERY_THREAD_ID:
         headers["x-openclaw-thread-id"] = config.OPENCLAW_DELIVERY_THREAD_ID
 
@@ -189,10 +218,11 @@ async def ask_openclaw_text(text: str) -> str:
         )
         elapsed = time.time() - started
         logger.info(
-            "⏱️ OpenClaw bridge: status=%s model=%s agent=%s authoritative=%s elapsed=%0.2fs",
+            "⏱️ OpenClaw bridge: status=%s model=%s agent=%s route=%s authoritative=%s elapsed=%0.2fs",
             response.status_code,
             model,
             agent_id,
+            target_area or "auto",
             bool(authoritative_session_key),
             elapsed,
         )
@@ -235,6 +265,10 @@ async def create_realtime_session(
                         "request": {
                             "type": "string",
                             "description": "The user's request, rewritten clearly for OpenClaw while preserving intent and relevant context.",
+                        },
+                        "target_area": {
+                            "type": "string",
+                            "description": "Optional project/channel target when Patricio names one, such as humanslivehere, tenpace, or rey-voice.",
                         }
                     },
                     "required": ["request"],
@@ -274,7 +308,7 @@ async def ask_openclaw_route(
     request = body.request.strip()
     if not request:
         raise HTTPException(status_code=400, detail="request is required")
-    return {"response": await ask_openclaw_text(request)}
+    return {"response": await ask_openclaw_text(request, body.target_area)}
 
 
 @app.on_event("startup")
@@ -435,7 +469,7 @@ class VoiceSession:
         logger.info(f"Transcribed: {text}")
         return text
 
-    async def ask_openclaw(self, text: str) -> str:
+    async def ask_openclaw(self, text: str, target_area: str | None = None) -> str:
         """Send text to OpenClaw and get response.
         
         Uses 'user' field for stable session key - OpenClaw maintains history
@@ -457,7 +491,7 @@ class VoiceSession:
 - You are the fast voice agent. For complex coding, repo, debugging, long-context, or high-stakes analysis, delegate to the main/Codex-backed OpenClaw agents when appropriate instead of doing slow deep work inline. Give Patricio a brief spoken acknowledgement while delegated work runs if the result will take time."""
 
         async def do_request():
-            return await ask_openclaw_text(text)
+            return await ask_openclaw_text(text, target_area)
         
         # Run request with keepalive pings to prevent Cloudflare timeout
         request_task = asyncio.create_task(do_request())

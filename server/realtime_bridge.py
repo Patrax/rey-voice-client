@@ -24,7 +24,7 @@ from voice_context import build_voice_context_prompt
 
 logger = logging.getLogger(__name__)
 
-AskOpenClaw = Callable[[str], Awaitable[str]]
+AskOpenClaw = Callable[[str, str | None], Awaitable[str]]
 Keepalive = Callable[[], Awaitable[None]]
 
 
@@ -47,7 +47,7 @@ files, calendar, messages, devices, project context, or any real action. OpenCla
 
 When the request is simple conversational small talk, you may answer directly.
 For anything personal, factual about Patricio, stateful, or tool/action related,
-call ask_openclaw first and speak the result naturally.
+call ask_openclaw first and speak the result naturally. When Patricio names a project or Discord work area, pass target_area with the canonical short name, for example humanslivehere, tenpace, or rey-voice.
 
 Voice style:
 - always respond in English unless Patricio explicitly asks for another language
@@ -146,6 +146,10 @@ async def run_realtime_turn(
                                 "request": {
                                     "type": "string",
                                     "description": "The user's request, rewritten clearly for OpenClaw while preserving intent and relevant context.",
+                                },
+                                "target_area": {
+                                    "type": "string",
+                                    "description": "Optional project/channel target when Patricio names one, such as humanslivehere, tenpace, or rey-voice.",
                                 }
                             },
                             "required": ["request"],
@@ -185,7 +189,8 @@ async def run_realtime_turn(
                 else:
                     logger.info("Realtime calling OpenClaw: %s", request[:160])
                     started = time.time()
-                    output = await ask_openclaw(request)
+                    target_area = (args.get("target_area") or "").strip() or None
+                    output = await ask_openclaw(request, target_area)
                     logger.info(
                         "⏱️ Realtime tool ask_openclaw elapsed=%0.2fs chars=%s",
                         time.time() - started,
