@@ -634,15 +634,34 @@ class ReyVoiceClient {
     document.addEventListener('click', () => this.hideTranscriptContextMenu());
     window.addEventListener('blur', () => this.hideTranscriptContextMenu());
 
-    this.transcriptPanel.addEventListener('contextmenu', (e) => {
-      const entryEl = e.target.closest('.transcript-entry');
+    const openMenuFromEvent = (e) => {
+      const entryEl = this.findTranscriptEntryFromEvent(e);
       if (!entryEl) return;
       e.preventDefault();
+      e.stopPropagation();
       const index = parseInt(entryEl.dataset.index, 10);
       const entry = this.transcript[index];
       if (!entry?.text) return;
       this.showTranscriptContextMenu(e.clientX, e.clientY, index);
-    });
+    };
+
+    // Capture at document level too: Electron frameless/no-drag regions can be
+    // finicky with delegated contextmenu handlers inside selectable text.
+    document.addEventListener('contextmenu', openMenuFromEvent, true);
+    this.transcriptPanel.addEventListener('contextmenu', openMenuFromEvent);
+  }
+
+  findTranscriptEntryFromEvent(e) {
+    const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    for (const item of path) {
+      if (item?.classList?.contains('transcript-entry')) return item;
+    }
+    let target = e.target;
+    if (target && target.nodeType === Node.TEXT_NODE) target = target.parentElement;
+    const fromTarget = target?.closest?.('.transcript-entry');
+    if (fromTarget) return fromTarget;
+    const fromPoint = document.elementFromPoint(e.clientX, e.clientY);
+    return fromPoint?.closest?.('.transcript-entry') || null;
   }
 
   showTranscriptContextMenu(x, y, index) {

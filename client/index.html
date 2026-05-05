@@ -129,8 +129,15 @@
       max-width: 90%;
       user-select: text;
       -webkit-user-select: text;
+      -webkit-app-region: no-drag;
       cursor: pointer;
       transition: opacity 0.2s;
+    }
+
+    .transcript-entry *,
+    .transcript-context-menu,
+    .transcript-context-menu * {
+      -webkit-app-region: no-drag;
     }
     
     .transcript-entry:hover {
