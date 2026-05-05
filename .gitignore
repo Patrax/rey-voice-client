@@ -37,5 +37,8 @@ Thumbs.db
 # Logs
 *.log
 
+# Runtime-generated voice context cache
+server/voice_context_hints.generated.json
+
 # Client config (contains auth token)
 client/config.json

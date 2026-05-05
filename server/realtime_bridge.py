@@ -15,12 +15,12 @@ import time
 import wave
 from dataclasses import dataclass
 from io import BytesIO
-from pathlib import Path
 from typing import Awaitable, Callable
 
 import websockets
 
 import config
+from voice_context import build_voice_context_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -35,36 +35,6 @@ class RealtimeResult:
     user_text: str
     rey_text: str
     audio_wav: bytes
-
-
-def load_voice_context_hints() -> str:
-    """Load compact recognition/routing hints for the realtime voice layer."""
-    path = Path(config.VOICE_CONTEXT_HINTS_PATH)
-    if not path.is_absolute():
-        path = Path(__file__).with_name(config.VOICE_CONTEXT_HINTS_PATH)
-
-    try:
-        data = json.loads(path.read_text())
-    except FileNotFoundError:
-        return ""
-    except Exception:
-        logger.warning("Could not load voice context hints from %s", path, exc_info=True)
-        return ""
-
-    lines = []
-    for hint in data.get("hints", []):
-        name = hint.get("name")
-        meaning = hint.get("meaning")
-        aliases = ", ".join(hint.get("aliases") or [])
-        route = " Call ask_openclaw when mentioned." if hint.get("route_to_openclaw") else ""
-        if name and meaning:
-            alias_text = f" Aliases/mishearings: {aliases}." if aliases else ""
-            lines.append(f"- {name}: {meaning}{alias_text}{route}")
-
-    if not lines:
-        return ""
-
-    return "Voice context primer. Use these only for disambiguation and routing; do not recite them:\n" + "\n".join(lines)
 
 
 VOICE_INSTRUCTIONS_TEMPLATE = """You are Rey, Patricio's personal assistant, speaking aloud.
@@ -90,7 +60,7 @@ Voice style:
 
 def build_voice_instructions() -> str:
     return VOICE_INSTRUCTIONS_TEMPLATE.format(
-        voice_context_hints=load_voice_context_hints().strip()
+        voice_context_hints=build_voice_context_prompt().strip()
     )
 
 

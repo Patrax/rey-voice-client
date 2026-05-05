@@ -27,11 +27,12 @@ from typing import Optional
 import httpx
 import numpy as np
 import soundfile as sf
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 import config
+from voice_context import load_voice_context_data, refresh_voice_context_hints
 
 # Lazy imports for heavy dependencies
 openwakeword = None
@@ -57,6 +58,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def require_http_token(authorization: str | None) -> None:
+    """Require the same bearer token used by the voice client for HTTP routes."""
+    if not config.AUTH_TOKEN:
+        return
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    token = authorization.replace("Bearer ", "", 1)
+    if token != config.AUTH_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+@app.on_event("startup")
+async def startup_refresh_voice_context() -> None:
+    """Warm the generated hints cache without blocking server startup."""
+    async def refresh_later():
+        await asyncio.sleep(0.5)
+        await asyncio.to_thread(refresh_voice_context_hints, False)
+
+    asyncio.create_task(refresh_later())
 
 
 class State(Enum):
@@ -588,6 +610,20 @@ connected_sessions: list[VoiceSession] = []
 @app.get("/health")
 async def health():
     return {"status": "ok", "clients": len(connected_sessions)}
+
+
+@app.get("/voice-context/hints")
+async def voice_context_hints(authorization: str = Header(None)):
+    """Return the current compact voice context primer data."""
+    require_http_token(authorization)
+    return load_voice_context_data()
+
+
+@app.post("/voice-context/refresh")
+async def refresh_voice_context(authorization: str = Header(None)):
+    """Regenerate voice context hints from OpenClaw/Memento."""
+    require_http_token(authorization)
+    return await asyncio.to_thread(refresh_voice_context_hints, True)
 
 
 class InboxMessage(BaseModel):

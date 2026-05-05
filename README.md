@@ -60,7 +60,7 @@ npm run build:linux  # Linux
 ```bash
 OPENCLAW_GATEWAY_URL=http://127.0.0.1:18789
 OPENCLAW_GATEWAY_TOKEN=your_token_here
-OPENCLAW_AGENT_ID=main
+OPENCLAW_AGENT_ID=voice
 
 # Voice backend: local or openai_realtime
 VOICE_BACKEND=local
@@ -70,6 +70,11 @@ OPENAI_API_KEY=sk-...
 OPENAI_REALTIME_MODEL=gpt-realtime
 OPENAI_REALTIME_VOICE=alloy
 
+# Compact runtime hints generated from OpenClaw/Memento for voice disambiguation.
+VOICE_CONTEXT_SEED_PATH=voice_context_seed.json
+VOICE_CONTEXT_GENERATED_PATH=~/.openclaw/runtime/rey-voice/voice_context_hints.generated.json
+VOICE_CONTEXT_REFRESH_SECONDS=3600
+
 WAKE_WORD=hey_jarvis        # OpenWakeWord model name
 WHISPER_MODEL=base.en       # tiny.en, base.en, small.en
 ```
@@ -78,6 +83,16 @@ WHISPER_MODEL=base.en       # tiny.en, base.en, small.en
 
 - `local`: wake word → local faster-whisper → OpenClaw → ElevenLabs/OpenAI TTS. This preserves the original private/offline-ish pipeline.
 - `openai_realtime`: wake word → OpenAI Realtime speech-to-speech. The realtime model gets an `ask_openclaw` tool, so requests that need Rey's real context/actions are routed back through OpenClaw instead of becoming generic ChatGPT voice.
+
+### Runtime voice context hints
+
+The Realtime layer loads a compact context primer so common workstreams are parsed correctly without injecting full memory. For example, it can treat "taxes" as Patricio's tax filing work rather than "Texas", and route topics like Tenpace or humanslivehere back through OpenClaw.
+
+- Committed seed aliases live in `server/voice_context_seed.json`.
+- Generated hints are written to `~/.openclaw/runtime/rey-voice/voice_context_hints.generated.json` and are intentionally not committed.
+- The server refreshes generated hints from Memento on startup and every `VOICE_CONTEXT_REFRESH_SECONDS` when needed.
+- Debug current hints: `GET /voice-context/hints` with `Authorization: Bearer <AUTH_TOKEN>`.
+- Force refresh: `POST /voice-context/refresh` with the same bearer token.
 
 ### Client
 
