@@ -34,6 +34,7 @@ class ReyVoiceClient {
     
     // Transcript history (load from localStorage)
     this.transcript = this.loadTranscript();
+    this.contextMenu = null;
     this.lastResponse = null;
     this.lastAudio = null;
     this.lastAudioMime = 'audio/mpeg';
@@ -86,8 +87,8 @@ class ReyVoiceClient {
     // Set initial expression
     this.setExpression('neutral');
     
-    // Enable copy in transcript panel
-    this.setupTranscriptCopy();
+    // Enable transcript interactions
+    this.setupTranscriptInteractions();
     
     // Connect first, then start audio
     this.connect();
@@ -616,36 +617,112 @@ class ReyVoiceClient {
     }
   }
 
-  setupTranscriptCopy() {
+  setupTranscriptInteractions() {
     // Global Cmd/Ctrl+C handler (Electron doesn't provide this by default)
     document.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
         const selection = window.getSelection().toString();
         if (selection) {
-          navigator.clipboard.writeText(selection).then(() => {
-            console.log('Copied to clipboard');
-          }).catch(err => {
+          navigator.clipboard.writeText(selection).catch(err => {
             console.error('Copy failed:', err);
           });
         }
       }
+      if (e.key === 'Escape') this.hideTranscriptContextMenu();
     });
-    
-    // Right-click shows "Copied!" feedback
+
+    document.addEventListener('click', () => this.hideTranscriptContextMenu());
+    window.addEventListener('blur', () => this.hideTranscriptContextMenu());
+
     this.transcriptPanel.addEventListener('contextmenu', (e) => {
+      const entryEl = e.target.closest('.transcript-entry');
+      if (!entryEl) return;
       e.preventDefault();
-      const selection = window.getSelection().toString();
-      if (selection) {
-        navigator.clipboard.writeText(selection).then(() => {
-          // Brief visual feedback
-          const feedback = document.createElement('div');
-          feedback.textContent = 'Copied!';
-          feedback.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#333;color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;z-index:9999;';
-          document.body.appendChild(feedback);
-          setTimeout(() => feedback.remove(), 800);
-        });
-      }
+      const index = parseInt(entryEl.dataset.index, 10);
+      const entry = this.transcript[index];
+      if (!entry?.text) return;
+      this.showTranscriptContextMenu(e.clientX, e.clientY, index);
     });
+  }
+
+  showTranscriptContextMenu(x, y, index) {
+    this.hideTranscriptContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'transcript-context-menu';
+    menu.innerHTML = `
+      <button type="button" data-action="copy">Copy</button>
+      <button type="button" data-action="resend">Resend</button>
+    `;
+
+    menu.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const action = e.target.dataset.action;
+      if (action === 'copy') await this.copyTranscriptEntry(index);
+      if (action === 'resend') await this.resendTranscriptEntry(index);
+      this.hideTranscriptContextMenu();
+    });
+
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(x, window.innerWidth - rect.width - 8);
+    const top = Math.min(y, window.innerHeight - rect.height - 8);
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+    this.contextMenu = menu;
+  }
+
+  hideTranscriptContextMenu() {
+    if (this.contextMenu) {
+      this.contextMenu.remove();
+      this.contextMenu = null;
+    }
+  }
+
+  showToast(text) {
+    const feedback = document.createElement('div');
+    feedback.className = 'toast-feedback';
+    feedback.textContent = text;
+    document.body.appendChild(feedback);
+    setTimeout(() => feedback.remove(), 900);
+  }
+
+  async copyTranscriptEntry(index) {
+    const text = this.transcript[index]?.text;
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    this.showToast('Copied');
+  }
+
+  async resendTranscriptEntry(index) {
+    const text = this.transcript[index]?.text;
+    if (!text) return;
+    this.hideError();
+    this.showToast('Resending');
+
+    try {
+      if (this.useWebRTCRealtime()) {
+        await this.realtime.sendTextMessage(text);
+        return;
+      }
+      if (this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify({ type: 'text_message', text }));
+        return;
+      }
+      throw new Error('Not connected');
+    } catch (err) {
+      console.error('Resend failed:', err);
+      this.showError(`Resend failed: ${err.message}`);
+    }
+  }
+
+  escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   loadTranscript() {
@@ -693,26 +770,19 @@ class ReyVoiceClient {
     }
     
     this.transcriptPanel.innerHTML = this.transcript.map((entry, i) => `
-      <div class="transcript-entry ${entry.role}" data-index="${i}">
-        <div class="transcript-text">${entry.text}</div>
-        <div class="timestamp">${entry.timestamp}</div>
+      <div class="transcript-entry ${this.escapeHtml(entry.role)}" data-index="${i}" title="Right-click for actions">
+        <div class="transcript-text">${this.escapeHtml(entry.text)}</div>
+        <div class="timestamp">${this.escapeHtml(entry.timestamp)}</div>
       </div>
     `).join('');
     
-    // Click to copy
+    // Double-click to copy; right-click opens Copy/Resend.
     this.transcriptPanel.querySelectorAll('.transcript-entry').forEach(el => {
-      el.addEventListener('click', (e) => {
-        // Don't copy if user is selecting text
-        if (window.getSelection().toString()) return;
-        
-        const index = parseInt(el.dataset.index);
-        const text = this.transcript[index]?.text;
-        if (text) {
-          navigator.clipboard.writeText(text).then(() => {
-            el.style.opacity = '0.5';
-            setTimeout(() => el.style.opacity = '1', 200);
-          });
-        }
+      el.addEventListener('dblclick', async () => {
+        const index = parseInt(el.dataset.index, 10);
+        await this.copyTranscriptEntry(index);
+        el.style.opacity = '0.5';
+        setTimeout(() => el.style.opacity = '1', 200);
       });
     });
     

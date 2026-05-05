@@ -156,6 +156,50 @@
       margin-top: 4px;
     }
 
+    .transcript-context-menu {
+      position: fixed;
+      min-width: 128px;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+      padding: 6px;
+      z-index: 9999;
+      -webkit-app-region: no-drag;
+    }
+
+    .transcript-context-menu button {
+      width: 100%;
+      border: none;
+      background: transparent;
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #222;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .transcript-context-menu button:hover {
+      background: rgba(139, 92, 246, 0.12);
+      color: #6d28d9;
+    }
+
+    .toast-feedback {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #333;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      z-index: 10000;
+      -webkit-app-region: no-drag;
+      pointer-events: none;
+    }
+
     .transcript-empty {
       color: rgba(0, 0, 0, 0.3);
       text-align: center;

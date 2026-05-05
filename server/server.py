@@ -808,6 +808,23 @@ async def voice_endpoint(websocket: WebSocket):
                         await session.send_state(State.LISTENING, "I'm listening...")
                         session.audio_buffer = []
                         session.silence_frames = 0
+                elif msg.get("type") == "text_message":
+                    text = (msg.get("text") or "").strip()
+                    if text:
+                        logger.info("Transcript resend text message: %s", text[:120])
+                        await session.send_state(State.PROCESSING, "Resending...")
+                        try:
+                            response = await session.ask_openclaw(text)
+                            await websocket.send_json({
+                                "type": "response",
+                                "user_text": text,
+                                "rey_text": response,
+                            })
+                            await session.send_state(State.WAITING_FOR_WAKE_WORD, "Ready")
+                        except Exception as exc:
+                            logger.exception("Transcript resend failed")
+                            await websocket.send_json({"type": "error", "message": str(exc)})
+                            await session.send_state(State.WAITING_FOR_WAKE_WORD, "Ready")
                         
     except WebSocketDisconnect:
         logger.info("Client disconnected")

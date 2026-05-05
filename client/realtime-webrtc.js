@@ -46,6 +46,45 @@ class ReyRealtimeWebRTC {
     return this.dc?.readyState === 'open';
   }
 
+  waitUntilReady(timeoutMs = 10000) {
+    if (this.isReady()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const started = performance.now();
+      const timer = setInterval(() => {
+        if (this.isReady()) {
+          clearInterval(timer);
+          resolve();
+          return;
+        }
+        if (!this.active || performance.now() - started > timeoutMs) {
+          clearInterval(timer);
+          reject(new Error('Realtime conversation was not ready'));
+        }
+      }, 50);
+    });
+  }
+
+  async sendTextMessage(text) {
+    const content = (text || '').trim();
+    if (!content) return false;
+    if (!this.active) await this.start({ reason: 'resend' });
+    await this.waitUntilReady();
+    this.resetTurnState();
+    this.userTranscript = content;
+    this.onEvent?.({ type: 'user_transcript', text: content });
+    this.onEvent?.({ type: 'state', state: 'processing', message: 'Resending...' });
+    this.send({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: content }],
+      },
+    });
+    this.send({ type: 'response.create', response: { modalities: ['text', 'audio'] } });
+    return true;
+  }
+
   async start({ reason = 'manual' } = {}) {
     if (this.active) return;
     this.active = true;
