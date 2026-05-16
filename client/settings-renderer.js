@@ -202,6 +202,7 @@ class SettingsManager {
     btn.textContent = 'Record';
     btn.onclick = () => this.startHotkeyRecording(target);
     this.recordingTarget = null;
+    window.settingsAPI.stopHotkeyCapture();
   }
 
   updateHotkeyDisplay(hotkey, target = 'main') {

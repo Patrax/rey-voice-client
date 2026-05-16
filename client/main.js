@@ -45,6 +45,32 @@ let config = loadConfig();
 let mainWindow = null;
 let settingsWindow = null;
 let tray = null;
+let isCapturingHotkey = false;
+
+function acceleratorFromInput(input) {
+  if (!input || input.type !== 'keyDown') return null;
+
+  const parts = [];
+  if (input.control || input.meta) parts.push('CommandOrControl');
+  if (input.alt) parts.push('Alt');
+  if (input.shift) parts.push('Shift');
+
+  let key = input.key || '';
+  if (!key || key === 'Unidentified') return null;
+
+  if (key === ' ') key = 'Space';
+  else if (key === 'ArrowUp') key = 'Up';
+  else if (key === 'ArrowDown') key = 'Down';
+  else if (key === 'ArrowLeft') key = 'Left';
+  else if (key === 'ArrowRight') key = 'Right';
+  else if (key === 'Escape') key = 'Esc';
+  else if (key.length === 1) key = key.toUpperCase();
+
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(key)) return null;
+
+  parts.push(key);
+  return parts.join('+');
+}
 
 function createWindow() {
   // Start in compact mode (character only)
@@ -120,7 +146,19 @@ function createSettingsWindow() {
   settingsWindow.loadFile('settings.html');
   settingsWindow.setMenu(null);
 
+  settingsWindow.webContents.on('before-input-event', (event, input) => {
+    if (!isCapturingHotkey) return;
+
+    const accelerator = acceleratorFromInput(input);
+    if (!accelerator) return;
+
+    event.preventDefault();
+    settingsWindow.webContents.send('hotkey-captured', accelerator);
+  });
+
   settingsWindow.on('closed', () => {
+    isCapturingHotkey = false;
+    registerShortcuts();
     settingsWindow = null;
   });
 }
@@ -379,6 +417,18 @@ ipcMain.on('hide-window', () => {
 
 ipcMain.on('open-settings', () => {
   createSettingsWindow();
+});
+
+ipcMain.on('start-hotkey-capture', () => {
+  isCapturingHotkey = true;
+  // Release app-wide shortcuts while recording so the key being recorded is not swallowed.
+  globalShortcut.unregisterAll();
+});
+
+ipcMain.on('stop-hotkey-capture', () => {
+  if (!isCapturingHotkey) return;
+  isCapturingHotkey = false;
+  registerShortcuts();
 });
 
 // Window resizing for compact/expanded modes
