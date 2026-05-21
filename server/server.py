@@ -241,18 +241,23 @@ async def create_realtime_session(
     if not config.OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured")
 
-    payload = {
+    session_config = {
+        "type": "realtime",
         "model": config.OPENAI_REALTIME_MODEL,
-        "voice": config.OPENAI_REALTIME_VOICE,
         "instructions": build_voice_instructions(),
-        "modalities": ["text", "audio"],
-        "input_audio_transcription": {"model": config.OPENAI_REALTIME_TRANSCRIPTION_MODEL},
-        "turn_detection": {
-            "type": "server_vad",
-            "threshold": 0.5,
-            "prefix_padding_ms": 300,
-            "silence_duration_ms": 650,
-            "create_response": True,
+        "output_modalities": ["audio"],
+        "audio": {
+            "input": {
+                "transcription": {"model": config.OPENAI_REALTIME_TRANSCRIPTION_MODEL},
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.5,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 650,
+                    "create_response": True,
+                },
+            },
+            "output": {"voice": config.OPENAI_REALTIME_VOICE},
         },
         "tools": [
             {
@@ -277,24 +282,26 @@ async def create_realtime_session(
             }
         ],
         "tool_choice": "auto",
-        "temperature": config.OPENAI_REALTIME_TEMPERATURE,
     }
+    payload = {"session": session_config}
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(
-            "https://api.openai.com/v1/realtime/sessions",
+            "https://api.openai.com/v1/realtime/client_secrets",
             headers={
                 "Authorization": f"Bearer {config.OPENAI_API_KEY}",
                 "Content-Type": "application/json",
-                "OpenAI-Beta": "realtime=v1",
+                "OpenAI-Safety-Identifier": "patricio-rey-voice",
             },
             json=payload,
         )
         if response.status_code >= 400:
-            logger.error("Realtime session creation failed: %s %s", response.status_code, response.text[:500])
-            raise HTTPException(status_code=502, detail="OpenAI Realtime session creation failed")
+            logger.error("Realtime client secret creation failed: %s %s", response.status_code, response.text[:500])
+            raise HTTPException(status_code=502, detail="OpenAI Realtime client secret creation failed")
         data = response.json()
-        data.setdefault("model", config.OPENAI_REALTIME_MODEL)
+        # Keep the old response shape for existing Electron builds.
+        data.setdefault("model", data.get("session", {}).get("model") or config.OPENAI_REALTIME_MODEL)
+        data.setdefault("client_secret", {"value": data.get("value"), "expires_at": data.get("expires_at")})
         return data
 
 

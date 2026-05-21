@@ -81,7 +81,7 @@ class ReyRealtimeWebRTC {
         content: [{ type: 'input_text', text: content }],
       },
     });
-    this.send({ type: 'response.create', response: { modalities: ['text', 'audio'] } });
+    this.send({ type: 'response.create', response: { output_modalities: ['audio'] } });
     return true;
   }
 
@@ -211,7 +211,7 @@ class ReyRealtimeWebRTC {
   }
 
   async exchangeSdp(offerSdp, clientSecret, model) {
-    const response = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
+    const response = await fetch('https://api.openai.com/v1/realtime/calls', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${clientSecret}`,
@@ -230,14 +230,19 @@ class ReyRealtimeWebRTC {
     this.send({
       type: 'session.update',
       session: {
-        modalities: ['text', 'audio'],
-        input_audio_transcription: { model: 'whisper-1' },
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 650,
-          create_response: true,
+        type: 'realtime',
+        output_modalities: ['audio'],
+        audio: {
+          input: {
+            transcription: { model: 'whisper-1' },
+            turn_detection: {
+              type: 'server_vad',
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 650,
+              create_response: true,
+            },
+          },
         },
         tools: [
           {
@@ -308,13 +313,13 @@ class ReyRealtimeWebRTC {
       return;
     }
 
-    if (type === 'response.audio_transcript.delta' || type === 'response.text.delta') {
+    if (type === 'response.output_audio_transcript.delta' || type === 'response.audio_transcript.delta' || type === 'response.output_text.delta' || type === 'response.text.delta') {
       this.responseText += event.delta || '';
       this.onEvent?.({ type: 'partial_response', text: this.responseText });
       return;
     }
 
-    if (type === 'response.audio.done') {
+    if (type === 'response.output_audio.done' || type === 'response.audio.done') {
       this.audioDone = true;
       this.deliverFinalResponse();
       this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — listening' });
@@ -361,7 +366,7 @@ class ReyRealtimeWebRTC {
           output,
         },
       });
-      this.send({ type: 'response.create', response: { modalities: ['text', 'audio'] } });
+      this.send({ type: 'response.create', response: { output_modalities: ['audio'] } });
     } catch (err) {
       console.error('OpenClaw relay failed:', err);
       this.send({
@@ -372,7 +377,7 @@ class ReyRealtimeWebRTC {
           output: `OpenClaw tool call failed: ${err.message}`,
         },
       });
-      this.send({ type: 'response.create', response: { modalities: ['text', 'audio'] } });
+      this.send({ type: 'response.create', response: { output_modalities: ['audio'] } });
     }
   }
 
