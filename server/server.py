@@ -255,6 +255,7 @@ async def create_realtime_session(
                     "prefix_padding_ms": 300,
                     "silence_duration_ms": 650,
                     "create_response": True,
+                    "interrupt_response": False,
                 },
             },
             "output": {"voice": config.OPENAI_REALTIME_VOICE},
