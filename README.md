@@ -69,8 +69,12 @@ VOICE_BACKEND=local
 
 # Required for VOICE_BACKEND=openai_realtime
 OPENAI_API_KEY=sk-...
-OPENAI_REALTIME_MODEL=gpt-realtime
+OPENAI_REALTIME_MODEL=gpt-realtime-2.1
 OPENAI_REALTIME_VOICE=alloy
+OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-live-transcribe
+OPENAI_REALTIME_REASONING_EFFORT=low
+OPENAI_REALTIME_INTERRUPT_RESPONSE=true
+OPENAI_REALTIME_IDLE_TIMEOUT_SECONDS=120
 
 # Compact runtime hints generated from OpenClaw/Memento for voice disambiguation.
 VOICE_CONTEXT_SEED_PATH=voice_context_seed.json
@@ -94,6 +98,12 @@ The client has a separate **Realtime Transport** setting:
 - `backend`: fallback mode. The client keeps the older WebSocket path where the server captures a whole utterance and runs the backend Realtime bridge.
 
 Keep `backend` available as a safe fallback if WebRTC negotiation, device permissions, or corporate networks get in the way.
+
+Realtime defaults to `gpt-realtime-2.1` with low reasoning effort. Wake word or
+the hotkey starts a natural multi-turn session; F19 remains the hard stop.
+Sessions also close after two quiet minutes, and "go quiet" ends one immediately.
+The model can silently ignore room noise and side conversation with
+`wait_for_user`, while barge-in is enabled for natural interruptions.
 
 ### Runtime voice context hints
 

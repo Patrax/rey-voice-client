@@ -37,24 +37,66 @@ class RealtimeResult:
     audio_wav: bytes
 
 
-VOICE_INSTRUCTIONS_TEMPLATE = """You are Rey, Patricio's personal assistant, speaking aloud.
+VOICE_INSTRUCTIONS_TEMPLATE = """# Role and Objective
+
+You are Rey, Patricio's personal assistant, speaking aloud through a live voice session.
+You are the fast conversational layer. OpenClaw is the private home-server brain and
+the authority for Patricio's memory, workspace, tools, files, and real actions.
 
 {voice_context_hints}
 
-You are the live voice layer. OpenClaw is the private home-server brain.
-Use the ask_openclaw tool whenever a request needs Rey's memory, workspace,
-files, calendar, messages, devices, project context, or any real action. OpenClaw's voice agent is optimized for speed and can delegate complex coding, repository, debugging, long-context, or high-stakes analysis to the main/Codex-backed agents when appropriate.
+# Personality and Tone
 
-When the request is simple conversational small talk, you may answer directly.
-For anything personal, factual about Patricio, stateful, or tool/action related,
-call ask_openclaw first and speak the result naturally. When Patricio names a project or Discord work area, pass target_area with the canonical short name, for example humanslivehere, tenpace, or rey-voice.
+- Warm, concise, natural, and direct, like a trusted friend.
+- Speak in English unless Patricio explicitly asks for another language.
+- Use one or two short sentences for direct answers and confirmations.
+- Do not speak markdown, headings, bullets, or code fences unless explicitly asked.
 
-Voice style:
-- always respond in English unless Patricio explicitly asks for another language
-- concise, warm, conversational
-- no markdown, headings, bullets, or code fences unless explicitly asked
-- keep spoken answers short unless Patricio asks for detail
-- do not claim to have performed actions unless OpenClaw did them
+# Reasoning
+
+- For direct conversation, simple answers, and short confirmations, respond quickly.
+- For multi-step work, tool decisions, troubleshooting, or exact details, reason before acting.
+- If audio is unclear, ask one short clarification question instead of guessing.
+
+# Preambles
+
+- Before a tool call or delegated task that may take noticeable time, say one short,
+  natural acknowledgement such as "I'll check that now."
+- Skip preambles for direct answers, lightweight calls, unclear audio, silence, background
+  noise, TV audio, or side conversation.
+- Describe the action, never private reasoning. Do not use filler such as "Let me think."
+
+# Tools
+
+- Use only tools present in the current tool list. Never invent or simulate a tool.
+- Call ask_openclaw whenever a request needs Patricio's memory, workspace, files,
+  calendar, messages, devices, project context, current facts, or any real action.
+- Simple conversational small talk may be answered directly.
+- When Patricio names a project or Discord work area, pass target_area using its canonical
+  short name, such as humanslivehere, tenpace, or rey-voice.
+- Preserve Patricio's intent and exact names when rewriting a request for ask_openclaw.
+- Only say an action completed after ask_openclaw reports success.
+- If OpenClaw delegates longer work, briefly say it has been handed off and that the result
+  will return through the original area. Do not repeatedly call the same task.
+
+# Silence and Voice Focus
+
+- If the latest audio is silence, noise, media, side conversation, or speech not clearly
+  addressed to Rey, call wait_for_user and do not speak afterward.
+- Use wait_for_user for non-addressed audio, not for an unclear request directed at Rey.
+- If Patricio says "go quiet", "that's all", "stop listening", or otherwise clearly ends
+  the voice session, call end_voice_session.
+
+# Entity Capture
+
+- Treat names, project names, dates, times, email addresses, codes, and quantities as exact.
+- If a consequential action depends on an uncertain exact value, read it back and confirm it.
+
+# Long Session Behavior
+
+- Use the latest user turn as the active request while preserving relevant conversation context.
+- Do not answer an earlier turn again after a newer turn or interruption.
+- Keep listening naturally after each answer until the session is ended or times out.
 """
 
 
@@ -62,6 +104,99 @@ def build_voice_instructions() -> str:
     return VOICE_INSTRUCTIONS_TEMPLATE.format(
         voice_context_hints=build_voice_context_prompt().strip()
     )
+
+
+def build_realtime_tools() -> list[dict]:
+    """Return the single authoritative Realtime tool catalog."""
+    return [
+        {
+            "type": "function",
+            "name": "ask_openclaw",
+            "description": (
+                "Ask Rey's OpenClaw brain to answer or perform a task with full "
+                "private context, memory, tools, files, calendar, and home-server access."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "request": {
+                        "type": "string",
+                        "description": (
+                            "The user's request, rewritten clearly for OpenClaw "
+                            "while preserving intent, exact entities, and relevant context."
+                        ),
+                    },
+                    "target_area": {
+                        "type": "string",
+                        "description": (
+                            "Optional project/channel target when Patricio names one, "
+                            "such as humanslivehere, tenpace, or rey-voice."
+                        ),
+                    },
+                },
+                "required": ["request"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "wait_for_user",
+            "description": (
+                "End the current turn without speaking when the latest audio is silence, "
+                "background noise, media, side conversation, or speech not addressed to Rey."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "end_voice_session",
+            "description": (
+                "End the live voice session when Patricio clearly says he is done, "
+                "asks Rey to go quiet, or asks Rey to stop listening."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    ]
+
+
+def build_realtime_session_config(*, conversation_mode: bool = True) -> dict:
+    """Build the GA Realtime session configuration used by every transport."""
+    audio_input: dict = {
+        "transcription": {"model": config.OPENAI_REALTIME_TRANSCRIPTION_MODEL},
+    }
+    if conversation_mode:
+        audio_input["turn_detection"] = {
+            "type": "server_vad",
+            "threshold": 0.5,
+            "prefix_padding_ms": 300,
+            "silence_duration_ms": 650,
+            "create_response": True,
+            "interrupt_response": config.OPENAI_REALTIME_INTERRUPT_RESPONSE,
+        }
+
+    return {
+        "type": "realtime",
+        "model": config.OPENAI_REALTIME_MODEL,
+        "instructions": build_voice_instructions(),
+        "reasoning": {"effort": config.OPENAI_REALTIME_REASONING_EFFORT},
+        "output_modalities": ["audio"],
+        "audio": {
+            "input": audio_input,
+            "output": {"voice": config.OPENAI_REALTIME_VOICE},
+        },
+        "tools": build_realtime_tools(),
+        "tool_choice": "auto",
+    }
 
 
 def pcm16_to_wav(pcm: bytes, sample_rate: int = 24000) -> bytes:
@@ -96,7 +231,7 @@ async def run_realtime_turn(
     url = f"wss://api.openai.com/v1/realtime?model={config.OPENAI_REALTIME_MODEL}"
     headers = {
         "Authorization": f"Bearer {config.OPENAI_API_KEY}",
-        "OpenAI-Beta": "realtime=v1",
+        "OpenAI-Safety-Identifier": "patricio-rey-voice",
     }
 
     audio_chunks: list[bytes] = []
@@ -126,40 +261,7 @@ async def run_realtime_turn(
     async with websockets.connect(url, **connect_kwargs) as ws:
         await ws.send(json.dumps({
             "type": "session.update",
-            "session": {
-                "modalities": ["text", "audio"],
-                "instructions": build_voice_instructions(),
-                "voice": config.OPENAI_REALTIME_VOICE,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": {
-                    "model": config.OPENAI_REALTIME_TRANSCRIPTION_MODEL,
-                },
-                "tools": [
-                    {
-                        "type": "function",
-                        "name": "ask_openclaw",
-                        "description": "Ask Rey's OpenClaw brain to answer or perform a task with full private context, memory, tools, files, calendar, and home-server access.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "request": {
-                                    "type": "string",
-                                    "description": "The user's request, rewritten clearly for OpenClaw while preserving intent and relevant context.",
-                                },
-                                "target_area": {
-                                    "type": "string",
-                                    "description": "Optional project/channel target when Patricio names one, such as humanslivehere, tenpace, or rey-voice.",
-                                }
-                            },
-                            "required": ["request"],
-                            "additionalProperties": False,
-                        },
-                    }
-                ],
-                "tool_choice": "auto",
-                "temperature": config.OPENAI_REALTIME_TEMPERATURE,
-            },
+            "session": build_realtime_session_config(conversation_mode=False),
         }))
 
         await ws.send(json.dumps({
@@ -177,7 +279,7 @@ async def run_realtime_turn(
         }))
         await ws.send(json.dumps({
             "type": "response.create",
-            "response": {"modalities": ["text", "audio"]},
+            "response": {"output_modalities": ["audio"]},
         }))
 
         async def handle_tool_call(call_id: str, arguments_json: str):
@@ -210,7 +312,7 @@ async def run_realtime_turn(
             }))
             await ws.send(json.dumps({
                 "type": "response.create",
-                "response": {"modalities": ["text", "audio"]},
+                "response": {"output_modalities": ["audio"]},
             }))
 
         done_without_pending_tools = False
@@ -244,9 +346,14 @@ async def run_realtime_turn(
 
             if event_type == "conversation.item.input_audio_transcription.completed":
                 user_text = event.get("transcript") or user_text
-            elif event_type in {"response.audio_transcript.delta", "response.text.delta"}:
+            elif event_type in {
+                "response.output_audio_transcript.delta",
+                "response.audio_transcript.delta",
+                "response.output_text.delta",
+                "response.text.delta",
+            }:
                 text_chunks.append(event.get("delta", ""))
-            elif event_type == "response.audio.delta":
+            elif event_type in {"response.output_audio.delta", "response.audio.delta"}:
                 audio_chunks.append(base64.b64decode(event.get("delta", "")))
             elif event_type == "response.function_call_arguments.done":
                 done_without_pending_tools = False

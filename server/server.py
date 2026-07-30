@@ -33,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import config
 from voice_context import load_voice_context_data, refresh_voice_context_hints
-from realtime_bridge import build_voice_instructions
+from realtime_bridge import build_realtime_session_config
 
 # Lazy imports for heavy dependencies
 openwakeword = None
@@ -241,49 +241,7 @@ async def create_realtime_session(
     if not config.OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured")
 
-    session_config = {
-        "type": "realtime",
-        "model": config.OPENAI_REALTIME_MODEL,
-        "instructions": build_voice_instructions(),
-        "output_modalities": ["audio"],
-        "audio": {
-            "input": {
-                "transcription": {"model": config.OPENAI_REALTIME_TRANSCRIPTION_MODEL},
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 650,
-                    "create_response": True,
-                    "interrupt_response": False,
-                },
-            },
-            "output": {"voice": config.OPENAI_REALTIME_VOICE},
-        },
-        "tools": [
-            {
-                "type": "function",
-                "name": "ask_openclaw",
-                "description": "Ask Rey's OpenClaw brain to answer or perform a task with full private context, memory, tools, files, calendar, and home-server access.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "request": {
-                            "type": "string",
-                            "description": "The user's request, rewritten clearly for OpenClaw while preserving intent and relevant context.",
-                        },
-                        "target_area": {
-                            "type": "string",
-                            "description": "Optional project/channel target when Patricio names one, such as humanslivehere, tenpace, or rey-voice.",
-                        }
-                    },
-                    "required": ["request"],
-                    "additionalProperties": False,
-                },
-            }
-        ],
-        "tool_choice": "auto",
-    }
+    session_config = build_realtime_session_config()
     payload = {"session": session_config}
 
     async with httpx.AsyncClient(timeout=20.0) as client:
@@ -303,6 +261,7 @@ async def create_realtime_session(
         # Keep the old response shape for existing Electron builds.
         data.setdefault("model", data.get("session", {}).get("model") or config.OPENAI_REALTIME_MODEL)
         data.setdefault("client_secret", {"value": data.get("value"), "expires_at": data.get("expires_at")})
+        data.setdefault("idle_timeout_seconds", config.OPENAI_REALTIME_IDLE_TIMEOUT_SECONDS)
         return data
 
 

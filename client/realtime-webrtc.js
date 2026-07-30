@@ -23,8 +23,11 @@ class ReyRealtimeWebRTC {
     this.active = false;
     this.ownsLocalStream = false;
     this.toolArguments = new Map();
+    this.toolNames = new Map();
     this.startedAt = 0;
     this.watchdogTimer = null;
+    this.idleTimer = null;
+    this.idleTimeoutMs = 120000;
     this.resetTurnState();
   }
 
@@ -90,6 +93,7 @@ class ReyRealtimeWebRTC {
     this.active = true;
     this.startedAt = performance.now();
     this.toolArguments.clear();
+    this.toolNames.clear();
     this.resetTurnState();
     this.clearTimers();
 
@@ -104,6 +108,7 @@ class ReyRealtimeWebRTC {
       this.onEvent?.({ type: 'state', state: 'listening', message: reason === 'wake' ? "Conversation active — I'm listening" : 'Starting conversation...' });
 
       const session = await this.createSession(reason);
+      this.idleTimeoutMs = Math.max(30000, Number(session?.idle_timeout_seconds || 120) * 1000);
       const clientSecret = session?.client_secret?.value;
       if (!clientSecret) throw new Error('Realtime session did not include a client secret');
 
@@ -128,6 +133,7 @@ class ReyRealtimeWebRTC {
         console.log('Realtime WebRTC connection:', state);
         if (state === 'connected') {
           this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — speak naturally' });
+          this.scheduleIdleTimeout();
         }
         if (state === 'failed' || state === 'closed' || state === 'disconnected') {
           if (this.active) this.end();
@@ -157,10 +163,10 @@ class ReyRealtimeWebRTC {
     }
   }
 
-  async end() {
+  async end(message = 'Ready') {
     if (!this.active) return;
     await this.close();
-    this.onEvent?.({ type: 'state', state: 'waiting', message: 'Ready' });
+    this.onEvent?.({ type: 'state', state: 'waiting', message });
   }
 
   async interrupt() {
@@ -190,6 +196,7 @@ class ReyRealtimeWebRTC {
     this.localStream = null;
     this.ownsLocalStream = false;
     this.toolArguments.clear();
+    this.toolNames.clear();
     this.resetTurnState();
   }
 
@@ -197,6 +204,25 @@ class ReyRealtimeWebRTC {
     if (this.watchdogTimer) {
       clearTimeout(this.watchdogTimer);
       this.watchdogTimer = null;
+    }
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
+  scheduleIdleTimeout() {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (!this.active) return;
+    this.idleTimer = setTimeout(() => {
+      if (this.active) this.end('Conversation closed after inactivity');
+    }, this.idleTimeoutMs);
+  }
+
+  pauseIdleTimeout() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
     }
   }
 
@@ -227,50 +253,11 @@ class ReyRealtimeWebRTC {
   }
 
   configureSession() {
-    this.send({
-      type: 'session.update',
-      session: {
-        type: 'realtime',
-        output_modalities: ['audio'],
-        audio: {
-          input: {
-            transcription: { model: 'whisper-1' },
-            turn_detection: {
-              type: 'server_vad',
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 650,
-              create_response: true,
-              interrupt_response: false,
-            },
-          },
-        },
-        tools: [
-          {
-            type: 'function',
-            name: 'ask_openclaw',
-            description: "Ask Rey's OpenClaw brain to answer or perform a task with full private context, memory, tools, files, calendar, and home-server access.",
-            parameters: {
-              type: 'object',
-              properties: {
-                request: {
-                  type: 'string',
-                  description: "The user's request, rewritten clearly for OpenClaw while preserving intent and relevant context.",
-                },
-                target_area: {
-                  type: 'string',
-                  description: 'Optional project/channel target when Patricio names one, such as humanslivehere, tenpace, or rey-voice.',
-                },
-              },
-              required: ['request'],
-              additionalProperties: false,
-            },
-          },
-        ],
-        tool_choice: 'auto',
-      },
-    });
+    // The server-issued client secret contains the authoritative model, prompt,
+    // VAD, reasoning, transcription, and tool configuration. Do not overwrite it
+    // from the client with a second, inevitably stale session.update payload.
     this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — speak naturally' });
+    this.scheduleIdleTimeout();
   }
 
   handleRealtimeEvent(event) {
@@ -282,6 +269,7 @@ class ReyRealtimeWebRTC {
     }
 
     if (type === 'input_audio_buffer.speech_started') {
+      this.pauseIdleTimeout();
       this.speechStarted = true;
       this.speechStopped = false;
       this.responseText = '';
@@ -306,6 +294,7 @@ class ReyRealtimeWebRTC {
     }
 
     if (type === 'response.created') {
+      this.pauseIdleTimeout();
       this.responseText = '';
       this.delivered = false;
       this.audioDone = false;
@@ -322,8 +311,15 @@ class ReyRealtimeWebRTC {
 
     if (type === 'response.output_audio.done' || type === 'response.audio.done') {
       this.audioDone = true;
-      this.deliverFinalResponse();
-      this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — listening' });
+      // Wait for response.done before treating transcript text as final. Realtime
+      // 2 may speak a short preamble and then emit a function call in the same
+      // response; recording that preamble as the answer would duplicate the turn.
+      return;
+    }
+
+    if (type === 'response.output_item.added' && event.item?.type === 'function_call') {
+      const key = event.item.call_id || event.item.id;
+      if (key) this.toolNames.set(key, event.item.name || '');
       return;
     }
 
@@ -336,7 +332,8 @@ class ReyRealtimeWebRTC {
     if (type === 'response.function_call_arguments.done') {
       const key = event.call_id || event.item_id;
       const args = event.arguments || this.toolArguments.get(key) || '{}';
-      this.handleToolCall(event.call_id, args);
+      const toolName = event.name || this.toolNames.get(key) || 'ask_openclaw';
+      this.handleToolCall(event.call_id, toolName, args);
       return;
     }
 
@@ -346,40 +343,59 @@ class ReyRealtimeWebRTC {
       const hasToolCall = output.some((item) => item.type === 'function_call');
       if (!hasToolCall) {
         this.deliverFinalResponse();
-        if (!this.audioDone) this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — listening' });
+        this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — listening' });
+        this.scheduleIdleTimeout();
       }
     }
   }
 
-  async handleToolCall(callId, argumentsJson) {
+  async handleToolCall(callId, toolName, argumentsJson) {
     if (!callId) return;
+    this.pauseIdleTimeout();
+
+    if (toolName === 'wait_for_user') {
+      this.sendToolOutput(callId, 'Waited silently for the user.');
+      this.onEvent?.({ type: 'state', state: 'listening', message: 'Conversation active — listening' });
+      this.scheduleIdleTimeout();
+      return;
+    }
+
+    if (toolName === 'end_voice_session') {
+      this.sendToolOutput(callId, 'Voice session ended.');
+      await this.end('Ready');
+      return;
+    }
+
+    if (toolName !== 'ask_openclaw') {
+      this.sendToolOutput(callId, `Unsupported tool: ${toolName}`);
+      this.send({ type: 'response.create', response: { output_modalities: ['audio'] } });
+      return;
+    }
+
     try {
       const args = JSON.parse(argumentsJson || '{}');
       const request = (args.request || '').trim();
       const targetArea = (args.target_area || '').trim();
       this.onEvent?.({ type: 'state', state: 'processing', message: 'Checking with OpenClaw...' });
       const output = await this.askOpenClaw(request || 'Please infer the user request from the current voice turn.', targetArea);
-      this.send({
-        type: 'conversation.item.create',
-        item: {
-          type: 'function_call_output',
-          call_id: callId,
-          output,
-        },
-      });
+      this.sendToolOutput(callId, output);
       this.send({ type: 'response.create', response: { output_modalities: ['audio'] } });
     } catch (err) {
       console.error('OpenClaw relay failed:', err);
-      this.send({
-        type: 'conversation.item.create',
-        item: {
-          type: 'function_call_output',
-          call_id: callId,
-          output: `OpenClaw tool call failed: ${err.message}`,
-        },
-      });
+      this.sendToolOutput(callId, `OpenClaw tool call failed: ${err.message}`);
       this.send({ type: 'response.create', response: { output_modalities: ['audio'] } });
     }
+  }
+
+  sendToolOutput(callId, output) {
+    this.send({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: callId,
+        output,
+      },
+    });
   }
 
   async askOpenClaw(request, targetArea = '') {
