@@ -36,10 +36,10 @@ DEFAULT_OPENCLAW_ROUTE_TARGETS = {
     "rey-voice": {
         "aliases": ["rey voice", "voice client", "voice server", "rey-voice"],
         "delivery_channel": "discord",
-        "delivery_to": "channel:1501214331759755365",
+        "delivery_to": "channel:1532478362289836184",
         "account_id": "default",
-        "authoritative_agent_id": "main",
-        "authoritative_session_key": "agent:main:discord:channel:1501214331759755365",
+        "authoritative_agent_id": "voice",
+        "authoritative_session_key": "agent:voice:discord:channel:1532478362289836184",
     },
 }
 try:
