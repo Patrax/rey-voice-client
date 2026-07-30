@@ -81,11 +81,7 @@ the authority for Patricio's memory, workspace, tools, files, and real actions.
 
 # Silence and Voice Focus
 
-- If the latest audio is silence, noise, media, side conversation, or speech not clearly
-  addressed to Rey, call wait_for_user and do not speak afterward.
-- Use wait_for_user for non-addressed audio, not for an unclear request directed at Rey.
-- If Patricio says "go quiet", "that's all", "stop listening", or otherwise clearly ends
-  the voice session, call end_voice_session.
+{control_tool_instructions}
 
 # Entity Capture
 
@@ -100,15 +96,27 @@ the authority for Patricio's memory, workspace, tools, files, and real actions.
 """
 
 
-def build_voice_instructions() -> str:
+def build_voice_instructions(*, include_control_tools: bool = True) -> str:
+    if include_control_tools:
+        control_tool_instructions = """- If the latest audio is silence, noise, media, side conversation, or speech not clearly
+  addressed to Rey, call wait_for_user and do not speak afterward.
+- Use wait_for_user for non-addressed audio, not for an unclear request directed at Rey.
+- If Patricio says "go quiet", "that's all", "stop listening", or otherwise clearly ends
+  the voice session, call end_voice_session."""
+    else:
+        control_tool_instructions = """- Respond only when speech is clearly addressed to Rey.
+- Treat silence, noise, media, and side conversation as non-user input.
+- The client does not support silent-wait or session-ending tools; do not invent or call them."""
+
     return VOICE_INSTRUCTIONS_TEMPLATE.format(
-        voice_context_hints=build_voice_context_prompt().strip()
+        voice_context_hints=build_voice_context_prompt().strip(),
+        control_tool_instructions=control_tool_instructions,
     )
 
 
-def build_realtime_tools() -> list[dict]:
+def build_realtime_tools(*, include_control_tools: bool = True) -> list[dict]:
     """Return the single authoritative Realtime tool catalog."""
-    return [
+    tools = [
         {
             "type": "function",
             "name": "ask_openclaw",
@@ -138,38 +146,49 @@ def build_realtime_tools() -> list[dict]:
                 "additionalProperties": False,
             },
         },
-        {
-            "type": "function",
-            "name": "wait_for_user",
-            "description": (
-                "End the current turn without speaking when the latest audio is silence, "
-                "background noise, media, side conversation, or speech not addressed to Rey."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-                "additionalProperties": False,
-            },
-        },
-        {
-            "type": "function",
-            "name": "end_voice_session",
-            "description": (
-                "End the live voice session when Patricio clearly says he is done, "
-                "asks Rey to go quiet, or asks Rey to stop listening."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-                "additionalProperties": False,
-            },
-        },
     ]
+    if include_control_tools:
+        tools.extend(
+            [
+                {
+                    "type": "function",
+                    "name": "wait_for_user",
+                    "description": (
+                        "End the current turn without speaking when the latest audio is "
+                        "silence, background noise, media, side conversation, or speech "
+                        "not addressed to Rey."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "end_voice_session",
+                    "description": (
+                        "End the live voice session when Patricio clearly says he is done, "
+                        "asks Rey to go quiet, or asks Rey to stop listening."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                        "additionalProperties": False,
+                    },
+                },
+            ]
+        )
+    return tools
 
 
-def build_realtime_session_config(*, conversation_mode: bool = True) -> dict:
+def build_realtime_session_config(
+    *,
+    conversation_mode: bool = True,
+    include_control_tools: bool = True,
+) -> dict:
     """Build the GA Realtime session configuration used by every transport."""
     audio_input: dict = {
         "transcription": {"model": config.OPENAI_REALTIME_TRANSCRIPTION_MODEL},
@@ -181,20 +200,26 @@ def build_realtime_session_config(*, conversation_mode: bool = True) -> dict:
             "prefix_padding_ms": 300,
             "silence_duration_ms": 650,
             "create_response": True,
-            "interrupt_response": config.OPENAI_REALTIME_INTERRUPT_RESPONSE,
+            "interrupt_response": (
+                config.OPENAI_REALTIME_INTERRUPT_RESPONSE and include_control_tools
+            ),
         }
 
     return {
         "type": "realtime",
         "model": config.OPENAI_REALTIME_MODEL,
-        "instructions": build_voice_instructions(),
+        "instructions": build_voice_instructions(
+            include_control_tools=include_control_tools
+        ),
         "reasoning": {"effort": config.OPENAI_REALTIME_REASONING_EFFORT},
         "output_modalities": ["audio"],
         "audio": {
             "input": audio_input,
             "output": {"voice": config.OPENAI_REALTIME_VOICE},
         },
-        "tools": build_realtime_tools(),
+        "tools": build_realtime_tools(
+            include_control_tools=include_control_tools
+        ),
         "tool_choice": "auto",
     }
 
@@ -261,7 +286,10 @@ async def run_realtime_turn(
     async with websockets.connect(url, **connect_kwargs) as ws:
         await ws.send(json.dumps({
             "type": "session.update",
-            "session": build_realtime_session_config(conversation_mode=False),
+            "session": build_realtime_session_config(
+                conversation_mode=False,
+                include_control_tools=False,
+            ),
         }))
 
         await ws.send(json.dumps({

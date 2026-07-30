@@ -28,7 +28,7 @@ import httpx
 import numpy as np
 import soundfile as sf
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 
 import config
@@ -75,6 +75,7 @@ def require_http_token(authorization: str | None) -> None:
 class RealtimeSessionRequest(BaseModel):
     transport: str = "webrtc"
     reason: str = "manual"
+    capabilities: list[str] = Field(default_factory=list)
 
 
 class OpenClawAskRequest(BaseModel):
@@ -241,7 +242,9 @@ async def create_realtime_session(
     if not config.OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured")
 
-    session_config = build_realtime_session_config()
+    session_config = build_realtime_session_config(
+        include_control_tools="control_tools_v1" in body.capabilities
+    )
     payload = {"session": session_config}
 
     async with httpx.AsyncClient(timeout=20.0) as client:

@@ -230,7 +230,12 @@ class ReyRealtimeWebRTC {
     const response = await fetch(`${this.getServerBaseUrl()}/realtime/session`, {
       method: 'POST',
       headers: this.authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ transport: 'webrtc', reason, mode: 'conversation' }),
+      body: JSON.stringify({
+        transport: 'webrtc',
+        reason,
+        mode: 'conversation',
+        capabilities: ['control_tools_v1'],
+      }),
     });
     if (!response.ok) throw new Error(`Realtime session failed: ${response.status}`);
     return response.json();
